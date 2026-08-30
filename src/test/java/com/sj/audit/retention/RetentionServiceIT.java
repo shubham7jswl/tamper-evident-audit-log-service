@@ -4,8 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sj.audit.chain.ChainVerifier;
 import com.sj.audit.chain.VerificationReport;
+import com.sj.audit.domain.AuditEvent;
 import com.sj.audit.domain.AuditEventRepository;
+import com.sj.audit.redaction.RedactionService;
 import com.sj.audit.support.AbstractIntegrationTest;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.TestPropertySource;
@@ -16,6 +19,7 @@ class RetentionServiceIT extends AbstractIntegrationTest {
   @Autowired RetentionService retentionService;
   @Autowired ChainVerifier verifier;
   @Autowired AuditEventRepository events;
+  @Autowired RedactionService redactionService;
 
   @Test
   void archivedRecordsDoNotBreakVerification() {
@@ -45,5 +49,18 @@ class RetentionServiceIT extends AbstractIntegrationTest {
 
     assertThat(verifier.verify(null, null, false).intact()).isTrue(); // shallow can't see it
     assertThat(verifier.verify(null, null, true).intact()).isFalse(); // deep re-hashes and catches it
+  }
+
+  @Test
+  void aRecordRedactedThenArchivedStillVerifiesEvenOnDeep() {
+    AuditEvent e =
+        appender.append(event("ACCOUNT_VIEWED", "u", "acct-1", "{\"ssn\":\"111-22-3333\",\"ok\":1}"));
+    redactionService.redact(
+        new RedactionService.RedactRequest(
+            e.getEventId(), List.of("/ssn"), "privacy", "officer", null));
+    retentionService.run();
+
+    assertThat(verifier.verify(null, null, false).intact()).isTrue();
+    assertThat(verifier.verify(null, null, true).intact()).isTrue();
   }
 }

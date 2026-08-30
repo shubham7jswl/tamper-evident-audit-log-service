@@ -174,6 +174,10 @@ public class ChainVerifier {
 
   private VerificationReport.Inconsistency checkContent(AuditEvent e, boolean deep) {
     Map<String, String> storedCommitments = json.readStringMap(e.getLeafCommitmentsJson());
+    Set<String> redactedPaths =
+        redactions.findByEventSeqOrderByFieldPathAsc(e.getSeq()).stream()
+            .map(Redaction::getFieldPath)
+            .collect(Collectors.toSet());
 
     if (e.isArchived()) {
       if (deep) {
@@ -182,7 +186,8 @@ public class ChainVerifier {
           return inc(e, ViolationType.CONTENT_HASH_MISMATCH, "archived row has no archive copy");
         }
         VerificationReport.Inconsistency leafProblem =
-            recomputeLeaves(e, copy.getPayloadJson(), copy.getLeafSaltsJson(), storedCommitments, Set.of());
+            recomputeLeaves(
+                e, copy.getPayloadJson(), copy.getLeafSaltsJson(), storedCommitments, redactedPaths);
         if (leafProblem != null) {
           return leafProblem;
         }
@@ -193,11 +198,6 @@ public class ChainVerifier {
           ? null
           : inc(e, ViolationType.CONTENT_HASH_MISMATCH, "recomputed content_hash != stored (archived)");
     }
-
-    Set<String> redactedPaths =
-        redactions.findByEventSeqOrderByFieldPathAsc(e.getSeq()).stream()
-            .map(Redaction::getFieldPath)
-            .collect(Collectors.toSet());
 
     VerificationReport.Inconsistency leafProblem =
         recomputeLeaves(
