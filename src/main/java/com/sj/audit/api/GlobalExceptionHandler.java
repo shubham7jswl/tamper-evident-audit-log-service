@@ -4,30 +4,23 @@ import com.sj.audit.config.ApiError;
 import com.sj.audit.config.ForbiddenException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.NoSuchElementException;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
-/** Uniform {@link ApiError} responses for the whole API. */
+/**
+ * Uniform {@link ApiError} responses for application exceptions. Framework MVC exceptions (unknown
+ * route, wrong method, unreadable body, missing param) keep their standard status via the
+ * {@link ResponseEntityExceptionHandler} base class.
+ */
 @RestControllerAdvice
-public class GlobalExceptionHandler {
+public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
   private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
-
-  @ExceptionHandler(MethodArgumentNotValidException.class)
-  public ResponseEntity<ApiError> onValidation(
-      MethodArgumentNotValidException ex, HttpServletRequest request) {
-    String message =
-        ex.getBindingResult().getFieldErrors().stream()
-            .map(f -> f.getField() + " " + f.getDefaultMessage())
-            .collect(Collectors.joining("; "));
-    return build(HttpStatus.BAD_REQUEST, message.isEmpty() ? "validation failed" : message, request);
-  }
 
   @ExceptionHandler({IllegalArgumentException.class})
   public ResponseEntity<ApiError> onBadRequest(IllegalArgumentException ex, HttpServletRequest request) {
