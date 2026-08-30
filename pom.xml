@@ -29,7 +29,6 @@
     <properties>
         <java.version>21</java.version>
         <jacoco.version>0.8.12</jacoco.version>
-        <spotless.version>2.44.0</spotless.version>
         <spotbugs.version>4.8.6.6</spotbugs.version>
         <dependency-check.version>10.0.4</dependency-check.version>
     </properties>
@@ -99,9 +98,11 @@
 
     <profiles>
         <!--
-          Quality gates: formatting + static analysis + coverage thresholds.
-          Kept out of the default build so `./mvnw verify` stays fast and dependency-light;
-          CI and pre-submission run `./mvnw verify -Pquality`.
+          Quality gates: static analysis (SpotBugs) + coverage (JaCoCo, 70% line).
+          Kept out of the default build so `./mvnw verify` stays fast and works on any JDK 21+;
+          run `./mvnw verify -Pquality` on JDK 21 (JaCoCo 0.8.12 cannot instrument newer bytecode).
+          Code style is google-java-format (2-space), enforced via IDE config, not the build —
+          the Spotless plugin has tooling issues on JDK 26.
         -->
         <profile>
             <id>quality</id>
@@ -145,29 +146,6 @@
                                         </rule>
                                     </rules>
                                 </configuration>
-                            </execution>
-                        </executions>
-                    </plugin>
-
-                    <plugin>
-                        <groupId>com.diffplug.spotless</groupId>
-                        <artifactId>spotless-maven-plugin</artifactId>
-                        <version>${spotless.version}</version>
-                        <configuration>
-                            <java>
-                                <googleJavaFormat>
-                                    <version>1.23.0</version>
-                                </googleJavaFormat>
-                                <removeUnusedImports/>
-                                <importOrder/>
-                            </java>
-                        </configuration>
-                        <executions>
-                            <execution>
-                                <goals>
-                                    <goal>check</goal>
-                                </goals>
-                                <phase>validate</phase>
                             </execution>
                         </executions>
                     </plugin>

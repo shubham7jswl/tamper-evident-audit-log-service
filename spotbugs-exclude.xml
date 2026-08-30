@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <!-- Records + Spring beans trip a few low-value SpotBugs patterns. -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    </Match>
+    <Match>
+        <!-- Spring @ConfigurationProperties records legitimately hold collections. -->
+        <Class name="~com\.sj\.audit\.config\.AuditProperties.*"/>
+    </Match>
+</FindBugsFilter>
