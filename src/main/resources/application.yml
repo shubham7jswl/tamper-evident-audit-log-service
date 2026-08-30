@@ -1,0 +1,69 @@
+spring:
+  application:
+    name: tamper-evident-audit-log-service
+  datasource:
+    url: jdbc:h2:file:./data/auditdb;AUTO_SERVER=TRUE;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate.jdbc.time_zone: UTC
+      hibernate.format_sql: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+server:
+  port: 8080
+  error:
+    include-message: always
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    root: INFO
+    com.sj.audit: INFO
+
+audit:
+  # SHA-256("tamper-evident-audit-log::genesis::v1"); prev_hash of the first record.
+  genesis-hash: cdb3681748c47491bb74d81d0c8fb45444a52577331ee03b951cb2b9775fe0fa
+  # Static API keys. Override the values in real environments via the referenced env vars.
+  api-keys:
+    - key: ${AUDIT_WRITER_KEY:dev-writer-key}
+      principal: dev-writer
+      scopes: [WRITE, READ]
+    - key: ${AUDIT_READER_KEY:dev-reader-key}
+      principal: dev-reader
+      scopes: [READ]
+    - key: ${AUDIT_ADMIN_KEY:dev-admin-key}
+      principal: dev-admin
+      scopes: [WRITE, READ, ADMIN]
+  retention:
+    enabled: true
+    window: P365D
+    scheduled: false
+    scheduled-cron: "0 0 3 * * *"
+  redaction:
+    retain-salt-by-default: true
+  export:
+    # Optional HMAC over the export bundle. Empty => bundles are unsigned (integrity still
+    # provable from the embedded hash-chain metadata).
+    hmac-secret: ${AUDIT_EXPORT_HMAC_SECRET:}
+  compliance:
+    access-event-types:
+      - ACCOUNT_VIEWED
+      - ACCOUNT_STATEMENT_DOWNLOADED
+      - ACCOUNT_SEARCHED
+      - ACCOUNT_EXPORTED
+    client-data-resource-types:
+      - CLIENT_ACCOUNT
+      - CLIENT_ACCOUNT_STATEMENT

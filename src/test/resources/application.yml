@@ -1,0 +1,39 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:audit-test;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  flyway:
+    enabled: true
+    clean-disabled: false
+
+audit:
+  genesis-hash: cdb3681748c47491bb74d81d0c8fb45444a52577331ee03b951cb2b9775fe0fa
+  api-keys:
+    - key: test-writer-key
+      principal: test-writer
+      scopes: [WRITE, READ]
+    - key: test-reader-key
+      principal: test-reader
+      scopes: [READ]
+    - key: test-admin-key
+      principal: test-admin
+      scopes: [WRITE, READ, ADMIN]
+  retention:
+    enabled: true
+    window: P365D
+    scheduled: false
+  redaction:
+    retain-salt-by-default: true
+  export:
+    hmac-secret: test-hmac-secret
+  compliance:
+    access-event-types: [ACCOUNT_VIEWED, ACCOUNT_STATEMENT_DOWNLOADED, ACCOUNT_SEARCHED]
+    client-data-resource-types: [CLIENT_ACCOUNT, CLIENT_ACCOUNT_STATEMENT]
