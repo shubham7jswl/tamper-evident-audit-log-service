@@ -4,6 +4,8 @@ import com.sj.audit.compliance.ComplianceReportService;
 import com.sj.audit.security.ApiPrincipal;
 import com.sj.audit.security.RequireScope;
 import com.sj.audit.security.Scope;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.time.Instant;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -11,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /** Scenario C — regulator-facing compliance access report. */
 @RestController
+@Tag(name = "Compliance", description = "Scenario C — tamper-evident access report for a client account")
 public class ComplianceController {
 
   private final ComplianceReportService reportService;
@@ -21,6 +24,12 @@ public class ComplianceController {
 
   @GetMapping("/audit/compliance/access-report")
   @RequireScope(Scope.READ)
+  @Operation(
+      summary = "Compliance access report for a client account (scope: READ)",
+      description =
+          "resourceType must be a configured client-data type. Returns matched access events, a "
+              + "completeness statement, a full chain-verification result and an embedded "
+              + "verifiable bundle. Generating the report is itself audited.")
   public ComplianceReportService.AccessReport accessReport(
       ApiPrincipal principal,
       @RequestParam String resourceType,

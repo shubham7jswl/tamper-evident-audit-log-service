@@ -26,9 +26,16 @@ redaction that does not break the chain, verifiable bulk export, and a complianc
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-The service listens on `http://localhost:8080`. The `dev` profile also enables the H2 web console
-at `http://localhost:8080/h2-console` (JDBC URL `jdbc:h2:file:./data/auditdb`, user `sa`, no
-password) — used for the tamper demo below.
+The service listens on `http://localhost:8080`.
+
+- **Swagger UI:** `http://localhost:8080/swagger-ui.html` — click **Authorize** and paste an API
+  key (e.g. `dev-admin-key`) to call every endpoint from the browser.
+- **OpenAPI spec:** `http://localhost:8080/v3/api-docs`
+- The `dev` profile also enables the **H2 web console** at `http://localhost:8080/h2-console`
+  (JDBC URL `jdbc:h2:file:./data/auditdb`, user `sa`, no password) — used for the tamper demo below.
+
+The `/swagger-ui/**`, `/v3/api-docs/**`, and `/actuator/health` paths are open; all `/audit/**`
+endpoints require `X-Api-Key`.
 
 ### API keys
 

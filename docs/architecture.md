@@ -134,7 +134,9 @@ sub-range (seeded from the predecessor's `record_hash`).
 
 ## 4. API design
 
-REST/JSON, one resource tree under `/audit`. Errors use a single `ApiError` shape
+REST/JSON, one resource tree under `/audit`. An OpenAPI 3.1 document is published by springdoc at
+`/v3/api-docs` with Swagger UI at `/swagger-ui.html`; the `X-Api-Key` header is declared as a
+global API-key security scheme (`OpenApiConfig`). Errors use a single `ApiError` shape
 `{ timestamp, status, error, message, path }` (framework 4xx keep their status via
 `ResponseEntityExceptionHandler`). Pagination uses a stable `PageResponse` envelope
 (`content`, `page`, `size`, `totalElements`, `totalPages`, `hasNext`); results are ordered by

@@ -6,12 +6,15 @@ import com.sj.audit.config.ForbiddenException;
 import com.sj.audit.security.ApiPrincipal;
 import com.sj.audit.security.RequireScope;
 import com.sj.audit.security.Scope;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** Chain verification endpoint. */
 @RestController
+@Tag(name = "Verification", description = "Walk the hash chain and detect tampering")
 public class VerifyController {
 
   private final ChainVerifier verifier;
@@ -27,6 +30,12 @@ public class VerifyController {
    */
   @GetMapping("/audit/verify")
   @RequireScope(Scope.READ)
+  @Operation(
+      summary = "Verify the chain (scope: READ; deep=true needs ADMIN)",
+      description =
+          "Returns {intact, recordsChecked, archivedSegments, firstInconsistency}. Optional "
+              + "fromSeq/toSeq verify a sub-range. deep=true re-hashes archived rows from the "
+              + "archive copy.")
   public VerificationReport verify(
       ApiPrincipal principal,
       @RequestParam(required = false) Long fromSeq,

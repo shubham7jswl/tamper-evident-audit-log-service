@@ -59,14 +59,27 @@ is the point of keeping the engineer's build loop tight around AI output.
 | `TRUNCATE TABLE` in reset | AI's first version | **R** | H2 blocks `TRUNCATE` on FK-referenced tables even with referential integrity off; used ordered `DELETE`. |
 | All assertions | AI wrote | reviewed | Engineer spot-checked that failing-path tests fail for the stated reason (e.g. `LEAF_COMMITMENT_MISMATCH`, not a generic mismatch). |
 
-## 5. Documentation
+## 5. OpenAPI / Swagger (added after initial submission draft)
+
+| Item | AI contribution | Engineer action | Rationale |
+|---|---|---|---|
+| Dependency choice | AI checked the local repo and Maven for a springdoc build that targets Spring Boot 4 | **M** — pinned `springdoc-openapi-starter-webmvc-ui:3.0.0` explicitly (not in the Boot BOM); confirmed its parent is `spring-boot-starter-parent:4.0.0` and it boots against 4.1.1 | springdoc 2.x is Boot 3 / Jackson 2 only and would not start on Spring 7. |
+| Jackson 2 pulled transitively by swagger-core | AI noted swagger-core brings `com.fasterxml.jackson:2.21.5` alongside Jackson 3 | **A** — left as-is | Different package coordinates (`com.fasterxml.*` vs `tools.jackson.*`); they coexist, swagger uses its copy only for spec model serialization. |
+| `OpenApiConfig` — global `X-Api-Key` security scheme | AI wrote | **A** | So Swagger UI "Authorize" sends the key on every call. |
+| `@Tag` / `@Operation` on the six controllers | AI drafted concise summaries incl. the required scope | reviewed | springdoc does not read Javadoc without a build plugin; explicit annotations keep the spec useful. |
+| springdoc endpoints and auth | AI confirmed `/swagger-ui/**` and `/v3/api-docs/**` are outside `/audit/*`, so the API-key filter already doesn't touch them | **A**, documented in README | Dev-tooling endpoints intentionally open; noted. |
+
+Validated: `./mvnw verify` green (36 tests); booted and confirmed `/v3/api-docs` returns an
+OpenAPI 3.1 document with all six tags and per-operation summaries, and `/swagger-ui.html` loads.
+
+## 6. Documentation
 
 `README.md`, `docs/architecture.md`, the five ADRs, the three scenario docs, `docs/testing.md`,
 this log, and `docs/final-engineering-summary.md` were drafted by the AI from the implemented
 code and the decisions above, then reviewed and adjusted by the engineer. `ATTESTATION.md` is a
 template for the engineer to complete with the exact wording from the assignment's §0.
 
-## 6. Secure-AI-usage notes
+## 7. Secure-AI-usage notes
 
 - No secrets, credentials, or proprietary data were provided to the AI. The API keys in config
   are obvious development placeholders overridden by env vars.

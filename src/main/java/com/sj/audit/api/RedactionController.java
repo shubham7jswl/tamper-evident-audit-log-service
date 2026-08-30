@@ -4,6 +4,8 @@ import com.sj.audit.redaction.RedactionService;
 import com.sj.audit.security.ApiPrincipal;
 import com.sj.audit.security.RequireScope;
 import com.sj.audit.security.Scope;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
  * Structured redaction. ADMIN-scoped — this is the "human sign-off for high-impact changes" gate.
  */
 @RestController
+@Tag(name = "Redaction", description = "Redact sensitive payload leaves without breaking the chain")
 public class RedactionController {
 
   private final RedactionService redactionService;
@@ -33,6 +36,13 @@ public class RedactionController {
 
   @PostMapping("/audit/events/{eventId}/redactions")
   @RequireScope(Scope.ADMIN)
+  @Operation(
+      summary = "Redact payload leaves (scope: ADMIN)",
+      description =
+          "Replaces each listed JSON-Pointer leaf with a sentinel and records a redaction. No "
+              + "hash is recomputed — the chain stays valid. Also appends an "
+              + "AUDIT_RECORD_REDACTED meta event. retainSalt=false destroys the salt (stronger "
+              + "erasure, no later disclosure proof).")
   public RedactionService.RedactionResult redact(
       ApiPrincipal principal,
       @PathVariable String eventId,

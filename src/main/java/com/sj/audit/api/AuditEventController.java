@@ -9,6 +9,8 @@ import com.sj.audit.query.AuditQueryFilter;
 import com.sj.audit.query.AuditQueryService;
 import com.sj.audit.security.RequireScope;
 import com.sj.audit.security.Scope;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.time.Instant;
@@ -31,6 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 /** Write and query APIs. There is deliberately no update or delete route. */
 @RestController
 @RequestMapping("/audit/events")
+@Tag(name = "Events", description = "Append and query audit events (append-only — no update/delete)")
 public class AuditEventController {
 
   private static final int MAX_PAGE_SIZE = 200;
@@ -53,6 +56,11 @@ public class AuditEventController {
 
   @PostMapping
   @RequireScope(Scope.WRITE)
+  @Operation(
+      summary = "Append an event (scope: WRITE)",
+      description =
+          "Server assigns eventId, seq, recordedAt and the chain hashes. `payload` must be a JSON "
+              + "object. `timestamp` is optional caller-supplied event time.")
   public ResponseEntity<AuditEventResponse> create(@Valid @RequestBody CreateEventRequest request) {
     if (!request.payload().isObject()) {
       throw new IllegalArgumentException("payload must be a JSON object");
@@ -72,6 +80,7 @@ public class AuditEventController {
 
   @GetMapping("/{eventId}")
   @RequireScope(Scope.READ)
+  @Operation(summary = "Fetch one event by its eventId (scope: READ)")
   public AuditEventResponse get(@PathVariable String eventId) {
     AuditEvent event =
         queryService
@@ -86,6 +95,12 @@ public class AuditEventController {
 
   @GetMapping
   @RequireScope(Scope.READ)
+  @Operation(
+      summary = "Query events with filters + pagination (scope: READ)",
+      description =
+          "Any combination of actorId / resourceType / resourceId / eventType / from / to "
+              + "(from,to are ISO-8601 instants matched against event time). Ordered by seq. "
+              + "size is capped at 200.")
   public PageResponse<AuditEventResponse> query(
       @RequestParam(required = false) String actorId,
       @RequestParam(required = false) String resourceType,
