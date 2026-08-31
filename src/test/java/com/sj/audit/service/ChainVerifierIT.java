@@ -1,10 +1,9 @@
-package com.sj.audit.chain;
+package com.sj.audit.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sj.audit.domain.chain.VerificationReport;
 import com.sj.audit.enums.ViolationType;
-import com.sj.audit.service.ChainVerifier;
 import com.sj.audit.support.AbstractIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

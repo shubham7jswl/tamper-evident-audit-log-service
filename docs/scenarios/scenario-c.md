@@ -52,7 +52,7 @@ assumption I made to proceed, and why.
 
 **Implemented:** the endpoint, config-driven classification, the report object with embedded
 verifiable bundle + chain verification + completeness, the meta-audit event, and the
-data-classification guard. Tested in `compliance/ComplianceReportIT.java`
+data-classification guard. Tested in `service/ComplianceReportIT.java`
 (`reportsAccessEventsForAnAccountAndIsItselfAudited`,
 `rejectsResourceTypeThatIsNotClientAccountData`).
 

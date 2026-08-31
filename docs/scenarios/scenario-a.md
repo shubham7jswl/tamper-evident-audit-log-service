@@ -59,7 +59,7 @@ depend on it. The API and security layers are thin and came last.
 
 ## Validation
 
-Automated (`src/test/java/com/sj/audit/chain/ChainVerifierIT.java` and `api/AuditApiIT.java`):
+Automated (`src/test/java/com/sj/audit/service/ChainVerifierIT.java` and `api/AuditApiIT.java`):
 
 | Test | Asserts |
 |---|---|

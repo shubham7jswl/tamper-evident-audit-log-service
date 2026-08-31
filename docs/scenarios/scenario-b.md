@@ -29,7 +29,7 @@ a retained `content_hash` is still bound into `record_hash`, so the chain still 
 archived row and tampering with the tombstone's hashes is still caught. Deep verification is what
 protects the *archive contents*.
 
-### Validation (`retention/RetentionServiceIT.java`)
+### Validation (`service/RetentionServiceIT.java`)
 
 - `archivedRecordsDoNotBreakVerification`: window `PT0S`, 3 events archived → shallow verify
   `intact:true`, `archivedSegments = [{1,3}]`; deep verify also `intact:true`.
@@ -85,7 +85,7 @@ Verification cannot re-derive redacted plaintext (by design). Tampering with a v
 is redacted is caught by the leaf-commitment check; after redaction, that field's integrity rests
 on the commitment. No un-redact.
 
-### Validation (`redaction/RedactionServiceIT.java`)
+### Validation (`service/RedactionServiceIT.java`)
 
 - `redactedChainStillVerifiesAndHidesTheValue`: redact `/accountNumber` → `verify` still
   `intact:true`; stored payload contains the sentinel, not the number; sibling field intact.
@@ -124,7 +124,7 @@ provide the anchor to walk full linkage within each run.
 `BundleVerifier` (`com.sj.audit.utils`) is a standalone class (no Spring) so a recipient can run it
 with just the `com.sj.audit.utils.hash` package + Jackson.
 
-### Validation (`export/BundleExportIT.java`)
+### Validation (`service/BundleExportIT.java`)
 
 - `exportedBundleVerifiesIndependently`: export `acct-1` (non-contiguous seq 1 & 3) →
   `BundleVerifier.verify` valid; 2 segments.
