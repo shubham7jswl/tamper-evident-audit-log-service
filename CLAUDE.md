@@ -16,8 +16,10 @@ A tamper-evident, append-only audit log service (take-home exercise). Spring Boo
 ./mvnw verify -Pquality                              # SpotBugs + JaCoCo — run on JDK 21 only
 ```
 
-Dev API keys (header `X-Api-Key`): `dev-reader-key` (READ), `dev-writer-key` (WRITE+READ),
-`dev-admin-key` (+ADMIN).
+Dev API keys (header `X-Api-Key`, **`dev` profile only**): `dev-reader-key` (READ),
+`dev-writer-key` (WRITE+READ), `dev-admin-key` (+ADMIN). Outside `dev`/`test`, keys come from
+`AUDIT_{READER,WRITER,ADMIN}_KEY` and `ApiKeyConfigValidator` fails startup on missing/placeholder
+/short keys.
 
 ## Layout
 

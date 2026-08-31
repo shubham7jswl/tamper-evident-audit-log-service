@@ -45,16 +45,19 @@ logging:
 audit:
   # SHA-256("tamper-evident-audit-log::genesis::v1"); prev_hash of the first record.
   genesis-hash: cdb3681748c47491bb74d81d0c8fb45444a52577331ee03b951cb2b9775fe0fa
-  # Static API keys. Override the values in real environments via the referenced env vars.
+  # Static API keys. No values are shipped here: supply high-entropy secrets via the env vars
+  # below in every real environment. For local runs use the `dev` profile, which provides
+  # well-known development keys (src/main/resources/application-dev.yml).
+  # ApiKeyConfigValidator fails startup if a key is missing/placeholder and `dev` is not active.
   api-keys:
-    - key: ${AUDIT_WRITER_KEY:dev-writer-key}
-      principal: dev-writer
-      scopes: [WRITE, READ]
-    - key: ${AUDIT_READER_KEY:dev-reader-key}
-      principal: dev-reader
+    - key: ${AUDIT_READER_KEY:}
+      principal: reader
       scopes: [READ]
-    - key: ${AUDIT_ADMIN_KEY:dev-admin-key}
-      principal: dev-admin
+    - key: ${AUDIT_WRITER_KEY:}
+      principal: writer
+      scopes: [WRITE, READ]
+    - key: ${AUDIT_ADMIN_KEY:}
+      principal: admin
       scopes: [WRITE, READ, ADMIN]
   retention:
     enabled: true

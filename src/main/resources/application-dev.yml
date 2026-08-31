@@ -9,3 +9,17 @@ spring:
 logging:
   level:
     com.sj.audit: DEBUG
+
+# Local development only. These well-known keys are tolerated because the `dev` profile is active;
+# outside `dev`, ApiKeyConfigValidator rejects them. Override via env vars if you want your own.
+audit:
+  api-keys:
+    - key: ${AUDIT_READER_KEY:dev-reader-key}
+      principal: dev-reader
+      scopes: [READ]
+    - key: ${AUDIT_WRITER_KEY:dev-writer-key}
+      principal: dev-writer
+      scopes: [WRITE, READ]
+    - key: ${AUDIT_ADMIN_KEY:dev-admin-key}
+      principal: dev-admin
+      scopes: [WRITE, READ, ADMIN]

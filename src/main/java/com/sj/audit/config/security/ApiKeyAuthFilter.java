@@ -37,6 +37,11 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
     this.objectMapper = objectMapper;
     if (properties.apiKeys() != null) {
       for (AuditProperties.ApiKey k : properties.apiKeys()) {
+        // Skip blank keys: an unset AUDIT_*_KEY binds to "" and must never authenticate a request
+        // that omits the header. ApiKeyConfigValidator already fails startup for this outside dev.
+        if (k.key() == null || k.key().isBlank()) {
+          continue;
+        }
         principalsByKey.put(k.key(), new ApiPrincipal(k.principal(), Set.copyOf(k.scopes())));
       }
     }
@@ -59,7 +64,7 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
       throws ServletException, IOException {
 
     String presented = request.getHeader(HEADER);
-    ApiPrincipal principal = presented == null ? null : lookup(presented);
+    ApiPrincipal principal = (presented == null || presented.isBlank()) ? null : lookup(presented);
     if (principal == null) {
       writeUnauthorized(request, response);
       return;
