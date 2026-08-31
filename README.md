@@ -12,7 +12,8 @@ redaction that does not break the chain, verifiable bulk export, and a complianc
 - **Testing approach, limits, trade-offs**: `docs/testing.md`
 - **AI usage log**: `docs/ai-usage-log.md`
 - **Final engineering summary**: `docs/final-engineering-summary.md`
-- **Attestation**: `ATTESTATION.md`
+- **Post-review remediation**: `docs/eval-remediation.md`
+- **Attestation & reviewed revision**: `ATTESTATION.md`, `SUBMISSION.md`
 
 ## Prerequisites
 
