@@ -25,21 +25,26 @@ correctness and auditability, not throughput.
                                         H2 (file) + Flyway schema
 ```
 
-### Components (`src/main/java/com/sj/audit/`)
+### Components (`src/main/java/com/sj/`)
+
+The code is organized in layers (`api` → `service` → `repository` → `domain`), with the Spring-free
+crypto core under `utils`.
 
 | Package | Responsibility |
 |---|---|
-| `hash` | `CanonicalJson` (deterministic serialization), `Hashing` (SHA-256 + HMAC + domain separation), `PayloadCommitments` (per-leaf salted commitments), `AuditHasher` (content + record hash), `JsonPointers`, `Instants` |
-| `domain` | JPA entities (`AuditEvent`, `ChainHead`, `ArchivedAuditEvent`, `Redaction`) and repositories |
-| `chain` | `ChainAppender` (the only writer), `ChainVerifier`, `VerificationReport`, `ViolationType` |
-| `query` | dynamic filtered query (JPA Criteria) + pagination |
-| `redaction` | `RedactionService` — leaf redaction + meta-audit event |
-| `retention` | `RetentionService` — archival to tombstones + scheduled job |
-| `export` | `BundleExporter` (service) and `BundleVerifier` (standalone, Spring-free) |
-| `compliance` | `ComplianceReportService` — Scenario C |
-| `security` | `ApiKeyAuthFilter`, `ScopeInterceptor`, `@RequireScope`, `ApiPrincipal` |
-| `api` | controllers, request/response DTOs, `GlobalExceptionHandler` |
-| `config` | `AuditProperties`, `JsonSupport`, `Clock` bean, error model |
+| `TamperEvidentAuditLogServiceApplication` | Spring Boot entry point (root package `com.sj`). |
+| `audit.api` | REST controllers (`AuditEventController`, `VerifyController`, `RedactionController`, `RetentionController`, `ExportController`, `ComplianceController`) and `GlobalExceptionHandler`. Controllers stay thin: validate, call one service, map the result. |
+| `audit.service` | All business logic: `ChainAppender` (the only writer), `ChainVerifier`, `AuditQueryService`, `RedactionService`, `RetentionService`, `BundleExporter`, `ComplianceReportService`. |
+| `audit.repository` | Spring Data repositories: `AuditEventRepository`, `ChainHeadRepository`, `ArchivedAuditEventRepository`, `RedactionRepository`. |
+| `audit.domain` | JPA entities (`AuditEvent`, `ChainHead`, `ArchivedAuditEvent`, `Redaction`) and API DTOs (`CreateEventRequest`, `AuditEventResponse`, `PageResponse`). |
+| `audit.domain.chain` | `VerificationReport` — verify result plus the archived-segment model. |
+| `audit.domain.query` | `AuditQueryFilter` — the optional actor / resource / type / time-range criteria. |
+| `audit.domain.export` | `ExportBundle` — the self-contained, offline-verifiable export wire format. |
+| `audit.enums` | `Scope` (`READ` / `WRITE` / `ADMIN`), `ViolationType`. |
+| `audit.utils.hash` | Spring-free crypto core: `CanonicalJson` (deterministic serialization), `Hashing` (SHA-256 + HMAC + domain separation), `PayloadCommitments` (per-leaf salted commitments), `AuditHasher` (content + record hash), `JsonPointers`, `Instants`, `Hex`. |
+| `audit.utils` | `BundleVerifier` — standalone bundle checker; needs only `utils.hash` + Jackson, no Spring. |
+| `audit.config` | Cross-cutting wiring: `AuditProperties` (the `audit.*` config tree), `BeanConfig` (`Clock`), `OpenApiConfig`, `JsonSupport`, error model (`ApiError`, `ForbiddenException`). |
+| `audit.config.security` | `ApiKeyAuthFilter`, `ScopeInterceptor`, `@RequireScope`, `ApiPrincipal` (+ `ApiPrincipalArgumentResolver`), `SecurityConfig`. |
 
 ## 2. Data model
 
@@ -100,7 +105,7 @@ exposure.
    is the previous record's `record_hash`, or the genesis constant
    `SHA-256("tamper-evident-audit-log::genesis::v1")` for `seq = 1`.
 
-### Verification (`ChainVerifier`)
+### Verification (`ChainVerifier`, `audit.service`)
 
 Walks `seq` ascending in pages, holding the running previous `record_hash`. Per record:
 

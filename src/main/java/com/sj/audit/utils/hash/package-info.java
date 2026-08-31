@@ -1,8 +1,8 @@
 /**
  * Cryptographic building blocks for the tamper-evident chain. Nothing here talks to Spring or the
  * database — it is pure functions over bytes and JSON, reused by both the write path
- * ({@code chain.ChainAppender}) and every verify path ({@code chain.ChainVerifier},
- * {@code export.BundleVerifier}).
+ * ({@code com.sj.audit.service.ChainAppender}) and every verify path
+ * ({@code com.sj.audit.service.ChainVerifier}, {@code com.sj.audit.utils.BundleVerifier}).
  *
  * <h2>Vocabulary</h2>
  *

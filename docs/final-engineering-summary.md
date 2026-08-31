@@ -22,10 +22,10 @@ five ADRs under `docs/decisions/`.
 |---|---|
 | Runnable service | `./mvnw spring-boot:run -Dspring-boot.run.profiles=dev` (port 8080) |
 | Schema | `src/main/resources/db/migration/V1__init.sql` (Flyway) |
-| Hash chain core | `../src/main/java/com/sj/audit/utils/hash/`, `.../chain/` |
+| Hash chain core | `../src/main/java/com/sj/audit/utils/hash/` (crypto), `.../service/ChainAppender.java` + `ChainVerifier.java` |
 | REST API | `src/main/java/com/sj/audit/api/` (8 endpoints, table in `README.md`) |
 | OpenAPI / Swagger UI | `/v3/api-docs`, `/swagger-ui.html` (springdoc; `config/OpenApiConfig.java`) |
-| Standalone bundle verifier | `../src/main/java/com/sj/audit/domain/export/BundleVerifier.java` |
+| Standalone bundle verifier | `../src/main/java/com/sj/audit/utils/BundleVerifier.java` |
 | Tests | `src/test/...` — ~35 tests, `./mvnw verify` |
 | Architecture & data model | `docs/architecture.md` |
 | Decision records | `docs/decisions/ADR-0001..0005` |

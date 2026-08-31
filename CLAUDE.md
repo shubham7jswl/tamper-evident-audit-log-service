@@ -21,9 +21,14 @@ Dev API keys (header `X-Api-Key`): `dev-reader-key` (READ), `dev-writer-key` (WR
 
 ## Layout
 
-`com.sj.audit.hash` (canonical JSON, SHA-256, per-leaf commitments) · `.chain` (`ChainAppender`
-single writer, `ChainVerifier`) · `.domain` (JPA) · `.query` · `.redaction` · `.retention` ·
-`.export` (`BundleVerifier` is Spring-free) · `.compliance` · `.security` · `.api` · `.config`.
+Layered: `com.sj.audit.api` (thin controllers + `GlobalExceptionHandler`) · `.service` (all
+business logic — `ChainAppender` single writer, `ChainVerifier`, `AuditQueryService`,
+`RedactionService`, `RetentionService`, `BundleExporter`, `ComplianceReportService`) ·
+`.repository` (Spring Data) · `.domain` (JPA entities + DTOs; `.domain.chain` `VerificationReport`,
+`.domain.query` `AuditQueryFilter`, `.domain.export` `ExportBundle`) · `.enums` (`Scope`,
+`ViolationType`) · `.utils.hash` (canonical JSON, SHA-256, per-leaf commitments — Spring-free) ·
+`.utils` (`BundleVerifier`, Spring-free) · `.config` (+ `.config.security` — API-key filter,
+scope interceptor, `@RequireScope`).
 
 ## Conventions & gotchas
 

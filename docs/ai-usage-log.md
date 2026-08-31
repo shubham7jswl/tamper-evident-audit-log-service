@@ -18,7 +18,7 @@ Legend: **A** accepted as-is · **M** accepted with modification · **R** reject
 | Auth model | AI offered "no auth / API key / JWT" | **chose static API key + scopes** | Enough to enforce read/write separation and gate high-impact ops; not an auth product. |
 | Timestamp semantics | AI proposed storing both caller and server time | **A** | Matches the brief's "document your choice"; server time authoritative for ordering. |
 
-## 2. Hashing & chain core (`com.sj.audit.hash`, `com.sj.audit.chain`)
+## 2. Hashing & chain core (`com.sj.audit.utils.hash`, chain logic in `com.sj.audit.service`)
 
 | Item | AI contribution | Engineer action | Rationale |
 |---|---|---|---|

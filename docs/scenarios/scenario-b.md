@@ -121,8 +121,8 @@ per record, that `contentHash` recomputes from fields + commitments **and**
 unaltered and correctly linked to its predecessor, even without the neighbours. `segments`
 provide the anchor to walk full linkage within each run.
 
-`BundleVerifier` is a standalone class (no Spring) so a recipient can run it with just the
-`com.sj.audit.hash` package + Jackson.
+`BundleVerifier` (`com.sj.audit.utils`) is a standalone class (no Spring) so a recipient can run it
+with just the `com.sj.audit.utils.hash` package + Jackson.
 
 ### Validation (`export/BundleExportIT.java`)
 
