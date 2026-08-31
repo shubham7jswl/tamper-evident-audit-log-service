@@ -2,13 +2,17 @@ package com.sj.audit.chain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.sj.audit.domain.chain.VerificationReport;
+import com.sj.audit.enums.ViolationType;
+import com.sj.audit.service.ChainVerifier;
 import com.sj.audit.support.AbstractIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
 class ChainVerifierIT extends AbstractIntegrationTest {
 
-  @Autowired ChainVerifier verifier;
+  @Autowired
+  ChainVerifier verifier;
 
   private void seedThreeEvents() {
     appender.append(event("USER_LOGIN", "alice", "acct-1", "{\"ip\":\"10.0.0.1\"}"));

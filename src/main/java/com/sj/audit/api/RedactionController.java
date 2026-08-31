@@ -1,9 +1,9 @@
 package com.sj.audit.api;
 
-import com.sj.audit.redaction.RedactionService;
-import com.sj.audit.security.ApiPrincipal;
-import com.sj.audit.security.RequireScope;
-import com.sj.audit.security.Scope;
+import com.sj.audit.service.RedactionService;
+import com.sj.audit.config.security.ApiPrincipal;
+import com.sj.audit.config.security.RequireScope;
+import com.sj.audit.enums.Scope;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.NotEmpty;

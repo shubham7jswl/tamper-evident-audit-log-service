@@ -1,9 +1,9 @@
 package com.sj.audit.api;
 
-import com.sj.audit.compliance.ComplianceReportService;
-import com.sj.audit.security.ApiPrincipal;
-import com.sj.audit.security.RequireScope;
-import com.sj.audit.security.Scope;
+import com.sj.audit.service.ComplianceReportService;
+import com.sj.audit.config.security.ApiPrincipal;
+import com.sj.audit.config.security.RequireScope;
+import com.sj.audit.enums.Scope;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.time.Instant;

@@ -1,14 +1,13 @@
 package com.sj.audit.api;
 
-import com.sj.audit.chain.ChainAppender;
+import com.sj.audit.service.ChainAppender;
 import com.sj.audit.config.JsonSupport;
-import com.sj.audit.domain.AuditEvent;
-import com.sj.audit.domain.Redaction;
-import com.sj.audit.domain.RedactionRepository;
-import com.sj.audit.query.AuditQueryFilter;
-import com.sj.audit.query.AuditQueryService;
-import com.sj.audit.security.RequireScope;
-import com.sj.audit.security.Scope;
+import com.sj.audit.domain.*;
+import com.sj.audit.domain.query.AuditQueryFilter;
+import com.sj.audit.service.AuditQueryService;
+import com.sj.audit.repository.RedactionRepository;
+import com.sj.audit.config.security.RequireScope;
+import com.sj.audit.enums.Scope;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;

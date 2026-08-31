@@ -3,6 +3,8 @@ package com.sj.audit.hash;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Map;
+
+import com.sj.audit.utils.hash.PayloadCommitments;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 

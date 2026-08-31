@@ -1,11 +1,11 @@
 package com.sj.audit.api;
 
-import com.sj.audit.chain.ChainVerifier;
-import com.sj.audit.chain.VerificationReport;
+import com.sj.audit.service.ChainVerifier;
+import com.sj.audit.domain.chain.VerificationReport;
 import com.sj.audit.config.ForbiddenException;
-import com.sj.audit.security.ApiPrincipal;
-import com.sj.audit.security.RequireScope;
-import com.sj.audit.security.Scope;
+import com.sj.audit.config.security.ApiPrincipal;
+import com.sj.audit.config.security.RequireScope;
+import com.sj.audit.enums.Scope;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;

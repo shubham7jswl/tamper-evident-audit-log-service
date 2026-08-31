@@ -2,10 +2,11 @@ package com.sj.audit.redaction;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.sj.audit.chain.ChainVerifier;
-import com.sj.audit.chain.ViolationType;
+import com.sj.audit.service.ChainVerifier;
+import com.sj.audit.enums.ViolationType;
 import com.sj.audit.domain.AuditEvent;
-import com.sj.audit.domain.AuditEventRepository;
+import com.sj.audit.repository.AuditEventRepository;
+import com.sj.audit.service.RedactionService;
 import com.sj.audit.support.AbstractIntegrationTest;
 import java.util.List;
 import java.util.UUID;
@@ -14,7 +15,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 class RedactionServiceIT extends AbstractIntegrationTest {
 
-  @Autowired RedactionService redactionService;
+  @Autowired
+  RedactionService redactionService;
   @Autowired ChainVerifier verifier;
   @Autowired AuditEventRepository events;
 

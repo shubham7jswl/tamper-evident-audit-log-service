@@ -2,6 +2,7 @@ package com.sj.audit.hash;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.sj.audit.utils.hash.CanonicalJson;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 

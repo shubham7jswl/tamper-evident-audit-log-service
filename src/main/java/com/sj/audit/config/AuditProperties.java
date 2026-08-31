@@ -1,6 +1,6 @@
 package com.sj.audit.config;
 
-import com.sj.audit.security.Scope;
+import com.sj.audit.enums.Scope;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;

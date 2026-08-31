@@ -1,9 +1,9 @@
 package com.sj.audit.api;
 
-import com.sj.audit.export.BundleExporter;
-import com.sj.audit.export.ExportBundle;
-import com.sj.audit.security.RequireScope;
-import com.sj.audit.security.Scope;
+import com.sj.audit.service.BundleExporter;
+import com.sj.audit.domain.export.ExportBundle;
+import com.sj.audit.config.security.RequireScope;
+import com.sj.audit.enums.Scope;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;

@@ -2,11 +2,12 @@ package com.sj.audit.retention;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.sj.audit.chain.ChainVerifier;
-import com.sj.audit.chain.VerificationReport;
+import com.sj.audit.service.ChainVerifier;
+import com.sj.audit.domain.chain.VerificationReport;
 import com.sj.audit.domain.AuditEvent;
-import com.sj.audit.domain.AuditEventRepository;
-import com.sj.audit.redaction.RedactionService;
+import com.sj.audit.repository.AuditEventRepository;
+import com.sj.audit.service.RedactionService;
+import com.sj.audit.service.RetentionService;
 import com.sj.audit.support.AbstractIntegrationTest;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -16,7 +17,8 @@ import org.springframework.test.context.TestPropertySource;
 @TestPropertySource(properties = "audit.retention.window=PT0S")
 class RetentionServiceIT extends AbstractIntegrationTest {
 
-  @Autowired RetentionService retentionService;
+  @Autowired
+  RetentionService retentionService;
   @Autowired ChainVerifier verifier;
   @Autowired AuditEventRepository events;
   @Autowired RedactionService redactionService;

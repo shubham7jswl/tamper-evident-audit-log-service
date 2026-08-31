@@ -1,6 +1,6 @@
 package com.sj.audit.support;
 
-import com.sj.audit.chain.ChainAppender;
+import com.sj.audit.service.ChainAppender;
 import com.sj.audit.config.AuditProperties;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;

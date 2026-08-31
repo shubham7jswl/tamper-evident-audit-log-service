@@ -2,14 +2,18 @@ package com.sj.audit.export;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.sj.audit.domain.export.ExportBundle;
+import com.sj.audit.service.BundleExporter;
 import com.sj.audit.support.AbstractIntegrationTest;
+import com.sj.audit.utils.BundleVerifier;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import tools.jackson.databind.node.ObjectNode;
 
 class BundleExportIT extends AbstractIntegrationTest {
 
-  @Autowired BundleExporter exporter;
+  @Autowired
+  BundleExporter exporter;
 
   private void seed() {
     appender.append(event("A", "u1", "acct-1", "{\"k\":1}"));
