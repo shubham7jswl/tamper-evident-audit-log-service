@@ -38,20 +38,20 @@ public class AuditEventController {
 
   private static final int MAX_PAGE_SIZE = 200;
 
-  private final ChainAppender appender;
+  private final ChainAppender chainAppender;
   private final AuditQueryService queryService;
   private final RedactionRepository redactions;
-  private final JsonSupport json;
+  private final JsonSupport jsonCodec;
 
   public AuditEventController(
-      ChainAppender appender,
+      ChainAppender chainAppender,
       AuditQueryService queryService,
       RedactionRepository redactions,
-      JsonSupport json) {
-    this.appender = appender;
+      JsonSupport jsonCodec) {
+    this.chainAppender = chainAppender;
     this.queryService = queryService;
     this.redactions = redactions;
-    this.json = json;
+    this.jsonCodec = jsonCodec;
   }
 
   @PostMapping
@@ -66,7 +66,7 @@ public class AuditEventController {
       throw new IllegalArgumentException("payload must be a JSON object");
     }
     AuditEvent saved =
-        appender.append(
+        chainAppender.append(
             new ChainAppender.NewEvent(
                 request.eventType(),
                 request.actorId(),
@@ -75,7 +75,7 @@ public class AuditEventController {
                 request.payload(),
                 request.timestamp()));
     return ResponseEntity.created(URI.create("/audit/events/" + saved.getEventId()))
-        .body(AuditEventResponse.from(saved, json, List.of()));
+        .body(AuditEventResponse.from(saved, jsonCodec, List.of()));
   }
 
   @GetMapping("/{eventId}")
@@ -84,13 +84,13 @@ public class AuditEventController {
   public AuditEventResponse get(@PathVariable String eventId) {
     AuditEvent event =
         queryService
-            .findByEventId(parseUuid(eventId))
+            .findByEventId(parseEventId(eventId))
             .orElseThrow(() -> new NoSuchElementException("no audit event " + eventId));
     List<String> redactedPaths =
         redactions.findByEventSeqOrderByFieldPathAsc(event.getSeq()).stream()
             .map(Redaction::getFieldPath)
             .toList();
-    return AuditEventResponse.from(event, json, redactedPaths);
+    return AuditEventResponse.from(event, jsonCodec, redactedPaths);
   }
 
   @GetMapping
@@ -116,14 +116,14 @@ public class AuditEventController {
         new AuditQueryFilter(
             actorId, resourceType, resourceId, eventType, parseInstant(from, "from"), parseInstant(to, "to"));
 
-    Page<AuditEvent> result =
+    Page<AuditEvent> matchingEvents =
         queryService.query(
             filter, PageRequest.of(Math.max(page, 0), effectiveSize, Sort.by("seq").ascending()));
 
     Map<Long, List<String>> redactedBySeq =
         redactions
             .findByEventSeqInOrderByEventSeqAscFieldPathAsc(
-                result.getContent().stream().map(AuditEvent::getSeq).toList())
+                matchingEvents.getContent().stream().map(AuditEvent::getSeq).toList())
             .stream()
             .collect(
                 Collectors.groupingBy(
@@ -131,19 +131,19 @@ public class AuditEventController {
                     Collectors.mapping(Redaction::getFieldPath, Collectors.toList())));
 
     List<AuditEventResponse> content =
-        result.getContent().stream()
+        matchingEvents.getContent().stream()
             .map(
-                e ->
+                event ->
                     AuditEventResponse.from(
-                        e, json, redactedBySeq.getOrDefault(e.getSeq(), List.of())))
+                        event, jsonCodec, redactedBySeq.getOrDefault(event.getSeq(), List.of())))
             .toList();
-    return PageResponse.of(result, content);
+    return PageResponse.of(matchingEvents, content);
   }
 
-  private static java.util.UUID parseUuid(String value) {
+  private static java.util.UUID parseEventId(String value) {
     try {
       return java.util.UUID.fromString(value);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException notAUuid) {
       throw new IllegalArgumentException("not a valid event id: " + value);
     }
   }
@@ -154,7 +154,7 @@ public class AuditEventController {
     }
     try {
       return Instant.parse(value);
-    } catch (RuntimeException e) {
+    } catch (RuntimeException notAnInstant) {
       throw new IllegalArgumentException(field + " must be an ISO-8601 instant, e.g. 2026-08-29T12:00:00Z");
     }
   }

@@ -33,28 +33,28 @@ import tools.jackson.databind.node.ObjectNode;
 @Service
 public class ComplianceReportService {
 
-  public static final String REPORT_EVENT_TYPE = "COMPLIANCE_REPORT_GENERATED";
+  public static final String REPORT_META_EVENT_TYPE = "COMPLIANCE_REPORT_GENERATED";
 
   private final AuditQueryService queryService;
   private final BundleExporter bundleExporter;
   private final ChainVerifier chainVerifier;
-  private final ChainAppender appender;
+  private final ChainAppender chainAppender;
   private final AuditProperties properties;
-  private final JsonSupport json;
+  private final JsonSupport jsonCodec;
 
   public ComplianceReportService(
       AuditQueryService queryService,
       BundleExporter bundleExporter,
       ChainVerifier chainVerifier,
-      ChainAppender appender,
+      ChainAppender chainAppender,
       AuditProperties properties,
-      JsonSupport json) {
+      JsonSupport jsonCodec) {
     this.queryService = queryService;
     this.bundleExporter = bundleExporter;
     this.chainVerifier = chainVerifier;
-    this.appender = appender;
+    this.chainAppender = chainAppender;
     this.properties = properties;
-    this.json = json;
+    this.jsonCodec = jsonCodec;
   }
 
   public record AccessReportRequest(
@@ -96,7 +96,7 @@ public class ComplianceReportService {
     }
     List<String> accessTypes = List.copyOf(properties.compliance().accessEventTypes());
 
-    List<AuditEvent> matched =
+    List<AuditEvent> matchedAccessEvents =
         queryService
             .query(
                 new AuditQueryFilter(
@@ -109,34 +109,34 @@ public class ComplianceReportService {
                 PageRequest.of(0, 10_000, Sort.by("seq").ascending()))
             .getContent()
             .stream()
-            .filter(e -> accessTypes.contains(e.getEventType()))
+            .filter(event -> accessTypes.contains(event.getEventType()))
             .toList();
 
-    List<Long> seqs = matched.stream().map(AuditEvent::getSeq).toList();
+    List<Long> matchedSeqs = matchedAccessEvents.stream().map(AuditEvent::getSeq).toList();
     ExportBundle bundle =
         bundleExporter.exportForSeqs(
-            new ExportBundle.Filter("complianceAccessReport", request.resourceId()), seqs);
+            new ExportBundle.Filter("complianceAccessReport", request.resourceId()), matchedSeqs);
 
     List<AccessEntry> entries =
         bundle.records().stream()
             .map(
-                r ->
+                bundleRecord ->
                     new AccessEntry(
-                        r.seq(),
-                        r.eventId(),
-                        r.eventType(),
-                        r.actorId(),
-                        r.eventTimestamp(),
-                        r.recordedAt(),
-                        r.redactedPaths()))
+                        bundleRecord.seq(),
+                        bundleRecord.eventId(),
+                        bundleRecord.eventType(),
+                        bundleRecord.actorId(),
+                        bundleRecord.eventTimestamp(),
+                        bundleRecord.recordedAt(),
+                        bundleRecord.redactedPaths()))
             .toList();
 
     VerificationReport verification = chainVerifier.verify(null, null, false);
 
-    long fromSeq = seqs.isEmpty() ? 0 : seqs.get(0);
-    long toSeq = seqs.isEmpty() ? 0 : seqs.get(seqs.size() - 1);
+    long fromSeq = matchedSeqs.isEmpty() ? 0 : matchedSeqs.get(0);
+    long toSeq = matchedSeqs.isEmpty() ? 0 : matchedSeqs.get(matchedSeqs.size() - 1);
     Completeness completeness =
-        new Completeness(fromSeq, toSeq, matched.size(), verification.intact());
+        new Completeness(fromSeq, toSeq, matchedAccessEvents.size(), verification.intact());
 
     String reportHash =
         Hashing.sha256Hex(
@@ -147,22 +147,22 @@ public class ComplianceReportService {
                 String.valueOf(request.from()),
                 String.valueOf(request.to()),
                 bundle.bundleHash(),
-                Integer.toString(matched.size())));
+                Integer.toString(matchedAccessEvents.size())));
 
-    ObjectNode metaPayload = json.newObject();
+    ObjectNode metaPayload = jsonCodec.newObject();
     metaPayload.put("resourceType", request.resourceType());
     metaPayload.put("resourceId", request.resourceId());
     metaPayload.put("from", String.valueOf(request.from()));
     metaPayload.put("to", String.valueOf(request.to()));
     metaPayload.put("requestedBy", request.requestedBy());
-    metaPayload.put("matchedCount", matched.size());
+    metaPayload.put("matchedCount", matchedAccessEvents.size());
     metaPayload.put("reportHash", reportHash);
     metaPayload.put("bundleHash", bundle.bundleHash());
 
-    AuditEvent meta =
-        appender.append(
+    AuditEvent metaEvent =
+        chainAppender.append(
             new ChainAppender.NewEvent(
-                REPORT_EVENT_TYPE,
+                REPORT_META_EVENT_TYPE,
                 request.requestedBy(),
                 request.resourceType(),
                 request.resourceId(),
@@ -179,7 +179,7 @@ public class ComplianceReportService {
         verification,
         bundle,
         reportHash,
-        meta.getEventId(),
+        metaEvent.getEventId(),
         "Covers only event types configured as 'access' events and only records present in the "
             + "audit chain when generated. Verify the embedded bundle independently with "
             + "BundleVerifier. Absence of an event here is not proof it did not occur upstream.");

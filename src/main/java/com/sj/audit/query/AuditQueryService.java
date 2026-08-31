@@ -5,6 +5,8 @@ import com.sj.audit.domain.AuditEventRepository;
 import jakarta.persistence.criteria.Predicate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -15,44 +17,46 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AuditQueryService {
 
-  private final AuditEventRepository events;
+  private final AuditEventRepository auditEvents;
 
-  public AuditQueryService(AuditEventRepository events) {
-    this.events = events;
+  public AuditQueryService(AuditEventRepository auditEvents) {
+    this.auditEvents = auditEvents;
   }
 
   @Transactional(readOnly = true)
   public Page<AuditEvent> query(AuditQueryFilter filter, Pageable pageable) {
-    return events.findAll(toSpecification(filter), pageable);
+    return auditEvents.findAll(matching(filter), pageable);
   }
 
   @Transactional(readOnly = true)
-  public java.util.Optional<AuditEvent> findByEventId(java.util.UUID eventId) {
-    return events.findByEventId(eventId);
+  public Optional<AuditEvent> findByEventId(UUID eventId) {
+    return auditEvents.findByEventId(eventId);
   }
 
-  static Specification<AuditEvent> toSpecification(AuditQueryFilter f) {
-    return (root, cq, cb) -> {
-      List<Predicate> predicates = new ArrayList<>();
-      if (f.actorId() != null) {
-        predicates.add(cb.equal(root.get("actorId"), f.actorId()));
+  /** Builds a JPA {@code WHERE} from the non-null criteria; time range is on {@code eventTimestamp}. */
+  static Specification<AuditEvent> matching(AuditQueryFilter filter) {
+    return (root, query, criteriaBuilder) -> {
+      List<Predicate> conditions = new ArrayList<>();
+      if (filter.actorId() != null) {
+        conditions.add(criteriaBuilder.equal(root.get("actorId"), filter.actorId()));
       }
-      if (f.resourceType() != null) {
-        predicates.add(cb.equal(root.get("resourceType"), f.resourceType()));
+      if (filter.resourceType() != null) {
+        conditions.add(criteriaBuilder.equal(root.get("resourceType"), filter.resourceType()));
       }
-      if (f.resourceId() != null) {
-        predicates.add(cb.equal(root.get("resourceId"), f.resourceId()));
+      if (filter.resourceId() != null) {
+        conditions.add(criteriaBuilder.equal(root.get("resourceId"), filter.resourceId()));
       }
-      if (f.eventType() != null) {
-        predicates.add(cb.equal(root.get("eventType"), f.eventType()));
+      if (filter.eventType() != null) {
+        conditions.add(criteriaBuilder.equal(root.get("eventType"), filter.eventType()));
       }
-      if (f.from() != null) {
-        predicates.add(cb.greaterThanOrEqualTo(root.get("eventTimestamp"), f.from()));
+      if (filter.from() != null) {
+        conditions.add(
+            criteriaBuilder.greaterThanOrEqualTo(root.get("eventTimestamp"), filter.from()));
       }
-      if (f.to() != null) {
-        predicates.add(cb.lessThan(root.get("eventTimestamp"), f.to()));
+      if (filter.to() != null) {
+        conditions.add(criteriaBuilder.lessThan(root.get("eventTimestamp"), filter.to()));
       }
-      return cb.and(predicates.toArray(new Predicate[0]));
+      return criteriaBuilder.and(conditions.toArray(new Predicate[0]));
     };
   }
 }

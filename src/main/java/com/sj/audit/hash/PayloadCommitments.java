@@ -1,72 +1,82 @@
 package com.sj.audit.hash;
 
-import tools.jackson.databind.JsonNode;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Turns an event payload into a map of <b>per-leaf salted commitments</b> — the mechanism that lets
  * us redact individual payload fields later without invalidating the hash chain.
  *
- * <p>A "leaf" is any JSON value (string / number / boolean / null) and, so that structure is also
- * committed, any <em>empty</em> object or array. Non-empty containers are represented implicitly by
- * the set of leaf pointers beneath them: adding, removing or reordering payload elements changes
- * that set and therefore the content hash.
+ * <p>A <i>leaf</i> is any JSON value (string / number / boolean / null) and, so that structure is
+ * also committed, any <em>empty</em> object or array. Non-empty containers are represented
+ * implicitly by the set of leaf pointers beneath them: adding, removing or reordering payload
+ * elements changes that set, and therefore the content hash.
  *
- * <p>Commitment formula (see {@link Hashing#domainHashHex}):
+ * <p>Each leaf is first turned into a short deterministic string — its <i>canonical leaf</i> — of
+ * the form {@code typeTag + canonicalValue} (e.g. {@code "S4111"}, {@code "N10.5"}, {@code "Btrue"},
+ * {@code "Z"} for null, {@code "E{}"} for an empty object). The commitment is then
  *
- * <pre>commitment = SHA-256("LEAF1" | saltHex | leafTag+canonicalValue)</pre>
+ * <pre>commitment = SHA-256("LEAF1" | saltHex | canonicalLeaf)</pre>
  *
  * The random per-leaf salt makes commitments over low-entropy values (account numbers, SSNs)
- * resistant to brute-force/dictionary recovery once the plaintext is redacted.
+ * resistant to brute-force/dictionary recovery once the plaintext has been redacted.
  */
 public final class PayloadCommitments {
 
-  private static final String DOMAIN = "LEAF1";
+  private static final String LEAF_COMMITMENT_DOMAIN = "LEAF1";
 
   private PayloadCommitments() {}
 
-  /** Ordered map of JSON Pointer -> canonical leaf form ({@code tag + value}). */
-  public static Map<String, String> leafForms(JsonNode payload) {
-    Map<String, String> out = new LinkedHashMap<>();
-    walk("", payload, out);
-    return out;
+  /** Ordered map of JSON Pointer -&gt; canonical leaf, one entry per leaf in {@code payload}. */
+  public static Map<String, String> canonicalLeavesByPointer(JsonNode payload) {
+    Map<String, String> canonicalLeafByPointer = new LinkedHashMap<>();
+    collectLeaves("", payload, canonicalLeafByPointer);
+    return canonicalLeafByPointer;
   }
 
-  /** Compute the commitment for one leaf given its hex salt and canonical leaf form. */
-  public static String commit(String saltHex, String leafForm) {
-    return Hashing.domainHashHex(DOMAIN, saltHex, leafForm);
+  /** The salted commitment for a single leaf, given its hex salt and its canonical-leaf string. */
+  public static String computeLeafCommitment(String saltHex, String canonicalLeaf) {
+    return Hashing.domainHashHex(LEAF_COMMITMENT_DOMAIN, saltHex, canonicalLeaf);
   }
 
-  private static void walk(String pointer, JsonNode node, Map<String, String> out) {
+  private static void collectLeaves(
+      String pointer, JsonNode node, Map<String, String> canonicalLeafByPointer) {
     switch (node.getNodeType()) {
       case OBJECT -> {
         if (node.isEmpty()) {
-          out.put(pointer, "E{}");
+          canonicalLeafByPointer.put(pointer, "E{}");
           return;
         }
         node.properties()
-            .forEach(e -> walk(pointer + "/" + escape(e.getKey()), e.getValue(), out));
+            .forEach(
+                field ->
+                    collectLeaves(
+                        pointer + "/" + escapeToken(field.getKey()),
+                        field.getValue(),
+                        canonicalLeafByPointer));
       }
       case ARRAY -> {
         if (node.isEmpty()) {
-          out.put(pointer, "E[]");
+          canonicalLeafByPointer.put(pointer, "E[]");
           return;
         }
-        for (int i = 0; i < node.size(); i++) {
-          walk(pointer + "/" + i, node.get(i), out);
+        for (int index = 0; index < node.size(); index++) {
+          collectLeaves(pointer + "/" + index, node.get(index), canonicalLeafByPointer);
         }
       }
-      case STRING -> out.put(pointer, "S" + node.textValue());
-      case NUMBER -> out.put(pointer, "N" + CanonicalJson.canonicalNumber(node));
-      case BOOLEAN -> out.put(pointer, "B" + (node.booleanValue() ? "true" : "false"));
-      case NULL -> out.put(pointer, "Z");
-      default -> throw new IllegalArgumentException("unsupported payload node: " + node.getNodeType());
+      case STRING -> canonicalLeafByPointer.put(pointer, "S" + node.textValue());
+      case NUMBER -> canonicalLeafByPointer.put(pointer, "N" + CanonicalJson.canonicalNumber(node));
+      case BOOLEAN ->
+          canonicalLeafByPointer.put(pointer, "B" + (node.booleanValue() ? "true" : "false"));
+      case NULL -> canonicalLeafByPointer.put(pointer, "Z");
+      default ->
+          throw new IllegalArgumentException("unsupported payload node: " + node.getNodeType());
     }
   }
 
-  /** RFC 6901 reference-token escaping. */
-  private static String escape(String token) {
+  /** RFC 6901 reference-token escaping ({@code ~} -&gt; {@code ~0}, {@code /} -&gt; {@code ~1}). */
+  private static String escapeToken(String token) {
     return token.replace("~", "~0").replace("/", "~1");
   }
 }

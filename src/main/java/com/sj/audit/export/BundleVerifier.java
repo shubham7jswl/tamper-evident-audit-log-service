@@ -29,89 +29,91 @@ public final class BundleVerifier {
   public record Result(boolean valid, List<String> problems) {}
 
   public static Result verify(ExportBundle bundle, String hmacSecretOrNull) {
-    ObjectMapper mapper = JsonMapper.builder().build();
-    AuditHasher hasher = new AuditHasher(mapper);
+    ObjectMapper objectMapper = JsonMapper.builder().build();
+    AuditHasher auditHasher = new AuditHasher(objectMapper);
     List<String> problems = new ArrayList<>();
 
-    ObjectNode tree = (ObjectNode) mapper.valueToTree(bundle);
-    tree.remove("bundleHash");
-    tree.remove("hmac");
-    String recomputedBundleHash = Hashing.sha256Hex(CanonicalJson.canonicalize(tree));
+    ObjectNode bundleWithoutIntegrity = (ObjectNode) objectMapper.valueToTree(bundle);
+    bundleWithoutIntegrity.remove("bundleHash");
+    bundleWithoutIntegrity.remove("hmac");
+    String recomputedBundleHash =
+        Hashing.sha256Hex(CanonicalJson.canonicalize(bundleWithoutIntegrity));
     if (!recomputedBundleHash.equals(bundle.bundleHash())) {
       problems.add("bundle hash mismatch");
     }
     if (bundle.hmac() != null && hmacSecretOrNull != null) {
-      String expected =
+      String expectedHmac =
           Hashing.hmacSha256Hex(
               hmacSecretOrNull, bundle.bundleHash().getBytes(StandardCharsets.UTF_8));
-      if (!expected.equals(bundle.hmac())) {
+      if (!expectedHmac.equals(bundle.hmac())) {
         problems.add("hmac mismatch");
       }
     }
 
-    Map<Long, ExportBundle.Record> bySeq = new HashMap<>();
-    for (ExportBundle.Record r : bundle.records()) {
-      bySeq.put(r.seq(), r);
-      verifyRecord(hasher, r, problems);
+    Map<Long, ExportBundle.Record> recordBySeq = new HashMap<>();
+    for (ExportBundle.Record record : bundle.records()) {
+      recordBySeq.put(record.seq(), record);
+      verifyRecord(auditHasher, record, problems);
     }
 
     for (ExportBundle.Segment segment : bundle.segments()) {
-      String prev = segment.priorRecordHash();
+      String previousRecordHash = segment.priorRecordHash();
       for (long seq = segment.fromSeq(); seq <= segment.toSeq(); seq++) {
-        ExportBundle.Record r = bySeq.get(seq);
-        if (r == null) {
+        ExportBundle.Record record = recordBySeq.get(seq);
+        if (record == null) {
           problems.add("segment record missing: seq " + seq);
           break;
         }
-        if (!r.prevHash().equals(prev)) {
+        if (!record.prevHash().equals(previousRecordHash)) {
           problems.add("broken chain link at seq " + seq);
         }
-        prev = r.recordHash();
+        previousRecordHash = record.recordHash();
       }
     }
     return new Result(problems.isEmpty(), List.copyOf(problems));
   }
 
   private static void verifyRecord(
-      AuditHasher hasher, ExportBundle.Record r, List<String> problems) {
-    Map<String, String> commitments = r.leafCommitments();
+      AuditHasher auditHasher, ExportBundle.Record record, List<String> problems) {
+    Map<String, String> storedCommitmentByPointer = record.leafCommitments();
 
-    if (r.payload() != null) {
-      Map<String, String> forms = PayloadCommitments.leafForms(r.payload());
-      for (Map.Entry<String, String> entry : commitments.entrySet()) {
-        String path = entry.getKey();
-        if (r.redactedPaths().contains(path)) {
+    if (record.payload() != null) {
+      Map<String, String> currentLeafByPointer =
+          PayloadCommitments.canonicalLeavesByPointer(record.payload());
+      for (Map.Entry<String, String> stored : storedCommitmentByPointer.entrySet()) {
+        String pointer = stored.getKey();
+        if (record.redactedPaths().contains(pointer)) {
           continue;
         }
-        String form = forms.get(path);
-        String salt = r.leafSalts().get(path);
-        if (form == null || salt == null) {
-          problems.add("cannot verify leaf " + path + " at seq " + r.seq());
+        String currentLeaf = currentLeafByPointer.get(pointer);
+        String salt = record.leafSalts().get(pointer);
+        if (currentLeaf == null || salt == null) {
+          problems.add("cannot verify leaf " + pointer + " at seq " + record.seq());
           continue;
         }
-        if (!PayloadCommitments.commit(salt, form).equals(entry.getValue())) {
-          problems.add("leaf " + path + " modified at seq " + r.seq());
+        if (!PayloadCommitments.computeLeafCommitment(salt, currentLeaf).equals(stored.getValue())) {
+          problems.add("leaf " + pointer + " modified at seq " + record.seq());
         }
       }
     }
 
-    String contentHash =
-        hasher.contentHash(
-            new AuditHasher.HashInputs(
-                r.seq(),
-                UUID.fromString(r.eventId()),
-                r.eventType(),
-                r.actorId(),
-                r.resourceType(),
-                r.resourceId(),
-                Instants.parse(r.eventTimestamp()),
-                Instants.parse(r.recordedAt()),
-                commitments));
-    if (!contentHash.equals(r.contentHash())) {
-      problems.add("content hash mismatch at seq " + r.seq());
+    String recomputedContentHash =
+        auditHasher.contentHash(
+            new AuditHasher.ContentHashInput(
+                record.seq(),
+                UUID.fromString(record.eventId()),
+                record.eventType(),
+                record.actorId(),
+                record.resourceType(),
+                record.resourceId(),
+                Instants.parse(record.eventTimestamp()),
+                Instants.parse(record.recordedAt()),
+                storedCommitmentByPointer));
+    if (!recomputedContentHash.equals(record.contentHash())) {
+      problems.add("content hash mismatch at seq " + record.seq());
     }
-    if (!hasher.recordHash(r.prevHash(), r.contentHash()).equals(r.recordHash())) {
-      problems.add("record hash mismatch at seq " + r.seq());
+    if (!auditHasher.recordHash(record.prevHash(), record.contentHash()).equals(record.recordHash())) {
+      problems.add("record hash mismatch at seq " + record.seq());
     }
   }
 

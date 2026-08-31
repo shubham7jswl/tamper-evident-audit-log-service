@@ -20,7 +20,8 @@ import javax.crypto.spec.SecretKeySpec;
  */
 public final class Hashing {
 
-  private static final byte SEP = 0x1F;
+  /** ASCII unit separator placed between the parts of a domain-separated hash pre-image. */
+  private static final byte PART_SEPARATOR = 0x1F;
 
   private Hashing() {}
 
@@ -41,13 +42,13 @@ public final class Hashing {
    * || p1 || ...)}. Parts are treated as UTF-8 text.
    */
   public static String domainHashHex(String domainPrefix, String... parts) {
-    MessageDigest md = newDigest();
-    md.update(domainPrefix.getBytes(StandardCharsets.US_ASCII));
+    MessageDigest digest = newDigest();
+    digest.update(domainPrefix.getBytes(StandardCharsets.US_ASCII));
     for (String part : parts) {
-      md.update(SEP);
-      md.update(part.getBytes(StandardCharsets.UTF_8));
+      digest.update(PART_SEPARATOR);
+      digest.update(part.getBytes(StandardCharsets.UTF_8));
     }
-    return Hex.encode(md.digest());
+    return Hex.encode(digest.digest());
   }
 
   /** HMAC-SHA-256, hex-encoded. Used for optional export-bundle signing. */

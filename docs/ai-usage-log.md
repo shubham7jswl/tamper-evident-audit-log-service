@@ -79,7 +79,20 @@ this log, and `docs/final-engineering-summary.md` were drafted by the AI from th
 code and the decisions above, then reviewed and adjusted by the engineer. `ATTESTATION.md` is a
 template for the engineer to complete with the exact wording from the assignment's §0.
 
-## 7. Secure-AI-usage notes
+## 7. Readability refactor (rename-only pass)
+
+| Item | AI contribution | Engineer action | Rationale |
+|---|---|---|---|
+| Scope | AI offered three levels (docs-only / locals-only / full pass) | **chose full pass** | Wanted the code to read the way the docs describe it. |
+| Renames | AI renamed cryptic identifiers — `HashInputs`→`ContentHashInput`, `PayloadCommitments.commit`→`computeLeafCommitment`, `leafForms`→`canonicalLeavesByPointer`, `ChainVerifier.inc`→`inconsistencyAt`, `PAGE`→`SCAN_PAGE_SIZE`, `cursor`→`nextSeqToScan`, `e`→`event`, `json`→`jsonCodec`, repo fields→`auditEvents`/`chainAppender`, `rows`→`matchedEvents`, … | reviewed | Names now match the domain vocabulary in the ADRs. |
+| Frozen strings | AI flagged that the string literals in the hash pre-image (`"v"`, `"REC1"`, `"LEAF1"`, `"payloadLeafHashes"`, …) must not change | **A** | Renaming them would silently break every existing chain; only Java identifiers were touched. |
+| `package-info.java` | AI wrote one per package with a short glossary | reviewed | Biggest comprehension win; zero runtime risk. |
+
+Validated: behaviour-preserving — `./mvnw verify` still green (36 tests), and a booted instance
+still produces identical hashes for the same input (write → verify intact → redact → verify intact
+→ export).
+
+## 8. Secure-AI-usage notes
 
 - No secrets, credentials, or proprietary data were provided to the AI. The API keys in config
   are obvious development placeholders overridden by env vars.

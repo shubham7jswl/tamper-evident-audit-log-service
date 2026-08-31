@@ -37,27 +37,27 @@ import tools.jackson.databind.node.ObjectNode;
 @Service
 public class RedactionService {
 
-  public static final String SENTINEL_PREFIX = "__REDACTED__:";
-  public static final String META_EVENT_TYPE = "AUDIT_RECORD_REDACTED";
+  public static final String REDACTION_SENTINEL_PREFIX = "__REDACTED__:";
+  public static final String REDACTION_META_EVENT_TYPE = "AUDIT_RECORD_REDACTED";
 
-  private final AuditEventRepository events;
+  private final AuditEventRepository auditEvents;
   private final RedactionRepository redactions;
-  private final ChainAppender appender;
-  private final JsonSupport json;
+  private final ChainAppender chainAppender;
+  private final JsonSupport jsonCodec;
   private final AuditProperties properties;
   private final Clock clock;
 
   public RedactionService(
-      AuditEventRepository events,
+      AuditEventRepository auditEvents,
       RedactionRepository redactions,
-      ChainAppender appender,
-      JsonSupport json,
+      ChainAppender chainAppender,
+      JsonSupport jsonCodec,
       AuditProperties properties,
       Clock clock) {
-    this.events = events;
+    this.auditEvents = auditEvents;
     this.redactions = redactions;
-    this.appender = appender;
-    this.json = json;
+    this.chainAppender = chainAppender;
+    this.jsonCodec = jsonCodec;
     this.properties = properties;
     this.clock = clock;
   }
@@ -77,10 +77,9 @@ public class RedactionService {
   @Transactional
   public RedactionResult redact(RedactRequest request) {
     AuditEvent event =
-        events
+        auditEvents
             .findByEventId(request.eventId())
-            .orElseThrow(
-                () -> new NoSuchElementException("no audit event " + request.eventId()));
+            .orElseThrow(() -> new NoSuchElementException("no audit event " + request.eventId()));
     if (event.isArchived()) {
       throw new IllegalStateException("cannot redact archived record seq=" + event.getSeq());
     }
@@ -88,62 +87,65 @@ public class RedactionService {
       throw new IllegalArgumentException("fieldPaths must not be empty");
     }
 
-    JsonNode payload = json.parse(event.getPayloadJson());
-    Map<String, String> salts = json.readStringMap(event.getLeafSaltsJson());
-    Map<String, String> commitments = json.readStringMap(event.getLeafCommitmentsJson());
+    JsonNode payload = jsonCodec.parse(event.getPayloadJson());
+    Map<String, String> saltByPointer = jsonCodec.readStringMap(event.getLeafSaltsJson());
+    Map<String, String> commitmentByPointer =
+        jsonCodec.readStringMap(event.getLeafCommitmentsJson());
     boolean retainSalt =
         request.retainSalt() != null
             ? request.retainSalt()
             : properties.redaction().retainSaltByDefault();
 
-    List<RedactedField> redacted = new ArrayList<>();
-    for (String path : request.fieldPaths()) {
-      if (!commitments.containsKey(path)) {
-        throw new IllegalArgumentException("payload has no leaf at " + path);
+    List<RedactedField> redactedFields = new ArrayList<>();
+    for (String pointer : request.fieldPaths()) {
+      if (!commitmentByPointer.containsKey(pointer)) {
+        throw new IllegalArgumentException("payload has no leaf at " + pointer);
       }
-      if (redactions.existsByEventSeqAndFieldPath(event.getSeq(), path)) {
-        throw new IllegalStateException(path + " is already redacted on seq " + event.getSeq());
+      if (redactions.existsByEventSeqAndFieldPath(event.getSeq(), pointer)) {
+        throw new IllegalStateException(pointer + " is already redacted on seq " + event.getSeq());
       }
-      String commitment = commitments.get(path);
-      String salt = salts.remove(path);
+      String commitment = commitmentByPointer.get(pointer);
+      String salt = saltByPointer.remove(pointer);
       UUID redactionId = UUID.randomUUID();
 
-      JsonPointers.setStringLeaf(payload, path, SENTINEL_PREFIX + redactionId);
+      JsonPointers.setStringLeaf(payload, pointer, REDACTION_SENTINEL_PREFIX + redactionId);
       redactions.save(
           new Redaction(
               redactionId,
               event.getSeq(),
-              path,
+              pointer,
               commitment,
               retainSalt ? salt : null,
               retainSalt && salt != null,
               request.reason(),
               request.redactedBy(),
               clock.instant()));
-      redacted.add(new RedactedField(path, redactionId, commitment));
+      redactedFields.add(new RedactedField(pointer, redactionId, commitment));
     }
 
-    event.applyRedaction(CanonicalJson.canonicalize(payload), json.writeStringMap(salts));
+    event.applyRedaction(
+        CanonicalJson.canonicalize(payload), jsonCodec.writeStringMap(saltByPointer));
 
-    ObjectNode metaPayload = json.newObject();
-    metaPayload.put("targetEventId", event.getEventId().toString());
-    metaPayload.put("targetSeq", event.getSeq());
-    metaPayload.put("reason", request.reason());
-    metaPayload.put("redactedBy", request.redactedBy());
-    metaPayload.put("saltRetained", retainSalt);
-    var paths = metaPayload.putArray("fieldPaths");
-    redacted.forEach(f -> paths.add(f.fieldPath()));
+    ObjectNode metaEventPayload = jsonCodec.newObject();
+    metaEventPayload.put("targetEventId", event.getEventId().toString());
+    metaEventPayload.put("targetSeq", event.getSeq());
+    metaEventPayload.put("reason", request.reason());
+    metaEventPayload.put("redactedBy", request.redactedBy());
+    metaEventPayload.put("saltRetained", retainSalt);
+    var redactedPointers = metaEventPayload.putArray("fieldPaths");
+    redactedFields.forEach(field -> redactedPointers.add(field.fieldPath()));
 
-    AuditEvent meta =
-        appender.append(
+    AuditEvent metaEvent =
+        chainAppender.append(
             new ChainAppender.NewEvent(
-                META_EVENT_TYPE,
+                REDACTION_META_EVENT_TYPE,
                 request.redactedBy(),
                 "AUDIT_EVENT",
                 event.getEventId().toString(),
-                metaPayload,
+                metaEventPayload,
                 null));
 
-    return new RedactionResult(event.getEventId(), event.getSeq(), redacted, meta.getEventId());
+    return new RedactionResult(
+        event.getEventId(), event.getSeq(), redactedFields, metaEvent.getEventId());
   }
 }

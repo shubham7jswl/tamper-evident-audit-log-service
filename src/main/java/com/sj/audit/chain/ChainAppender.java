@@ -16,7 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 
 /**
- * The single writer of the hash chain.
+ * The single writer of the hash chain: turns a {@link NewEvent} into a fully-hashed, persisted
+ * {@link AuditEvent} and advances the chain head.
  *
  * <p>Every append runs in one transaction that first takes a {@code PESSIMISTIC_WRITE} lock on the
  * {@code chain_head} row. That lock is what guarantees a total order on appends and a gap-free
@@ -27,81 +28,84 @@ import tools.jackson.databind.JsonNode;
 @Service
 public class ChainAppender {
 
-  private final ChainHeadRepository chainHead;
-  private final AuditEventRepository events;
-  private final AuditHasher hasher;
-  private final JsonSupport json;
+  private final ChainHeadRepository chainHeadRepository;
+  private final AuditEventRepository auditEvents;
+  private final AuditHasher auditHasher;
+  private final JsonSupport jsonCodec;
   private final Clock clock;
 
   public ChainAppender(
-      ChainHeadRepository chainHead,
-      AuditEventRepository events,
-      AuditHasher hasher,
-      JsonSupport json,
+      ChainHeadRepository chainHeadRepository,
+      AuditEventRepository auditEvents,
+      AuditHasher auditHasher,
+      JsonSupport jsonCodec,
       Clock clock) {
-    this.chainHead = chainHead;
-    this.events = events;
-    this.hasher = hasher;
-    this.json = json;
+    this.chainHeadRepository = chainHeadRepository;
+    this.auditEvents = auditEvents;
+    this.auditHasher = auditHasher;
+    this.jsonCodec = jsonCodec;
     this.clock = clock;
   }
 
+  /** Everything a caller supplies for a new event; the server fills in the rest. */
   public record NewEvent(
       String eventType,
       String actorId,
       String resourceType,
       String resourceId,
       JsonNode payload,
-      Instant eventTimestamp) {}
+      Instant callerEventTimestamp) {}
 
   @Transactional
-  public AuditEvent append(NewEvent cmd) {
-    ChainHead head = chainHead.lockHead();
-    long seq = head.getLastSeq() + 1;
-    String prevHash = head.getLastRecordHash();
+  public AuditEvent append(NewEvent newEvent) {
+    ChainHead chainHead = chainHeadRepository.lockHead();
+    long nextSeq = chainHead.getLastSeq() + 1;
+    String previousRecordHash = chainHead.getLastRecordHash();
 
     Instant recordedAt = clock.instant();
-    Instant eventTimestamp = cmd.eventTimestamp() != null ? cmd.eventTimestamp() : recordedAt;
+    Instant eventTimestamp =
+        newEvent.callerEventTimestamp() != null ? newEvent.callerEventTimestamp() : recordedAt;
     UUID eventId = UUID.randomUUID();
 
-    JsonNode payload = cmd.payload();
+    JsonNode payload = newEvent.payload();
     String canonicalPayload = CanonicalJson.canonicalize(payload);
-    Map<String, String> salts = hasher.freshSalts(payload);
-    Map<String, String> commitments = hasher.commitmentsFor(payload, salts);
+    Map<String, String> saltByPointer = auditHasher.newSaltPerLeaf(payload);
+    Map<String, String> commitmentByPointer =
+        auditHasher.computeLeafCommitments(payload, saltByPointer);
 
     String contentHash =
-        hasher.contentHash(
-            new AuditHasher.HashInputs(
-                seq,
+        auditHasher.contentHash(
+            new AuditHasher.ContentHashInput(
+                nextSeq,
                 eventId,
-                cmd.eventType(),
-                cmd.actorId(),
-                cmd.resourceType(),
-                cmd.resourceId(),
+                newEvent.eventType(),
+                newEvent.actorId(),
+                newEvent.resourceType(),
+                newEvent.resourceId(),
                 eventTimestamp,
                 recordedAt,
-                commitments));
-    String recordHash = hasher.recordHash(prevHash, contentHash);
+                commitmentByPointer));
+    String recordHash = auditHasher.recordHash(previousRecordHash, contentHash);
 
     AuditEvent event =
         new AuditEvent(
-            seq,
+            nextSeq,
             eventId,
-            cmd.eventType(),
-            cmd.actorId(),
-            cmd.resourceType(),
-            cmd.resourceId(),
+            newEvent.eventType(),
+            newEvent.actorId(),
+            newEvent.resourceType(),
+            newEvent.resourceId(),
             canonicalPayload,
-            json.writeStringMap(salts),
-            json.writeStringMap(commitments),
+            jsonCodec.writeStringMap(saltByPointer),
+            jsonCodec.writeStringMap(commitmentByPointer),
             eventTimestamp,
             recordedAt,
             contentHash,
-            prevHash,
+            previousRecordHash,
             recordHash);
-    events.save(event);
+    auditEvents.save(event);
 
-    head.advance(seq, recordHash, recordedAt);
+    chainHead.advance(nextSeq, recordHash, recordedAt);
     return event;
   }
 }

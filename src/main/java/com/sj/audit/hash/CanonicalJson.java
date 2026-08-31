@@ -29,88 +29,88 @@ public final class CanonicalJson {
   private CanonicalJson() {}
 
   public static String canonicalize(JsonNode node) {
-    StringBuilder sb = new StringBuilder();
-    write(node, sb);
-    return sb.toString();
+    StringBuilder out = new StringBuilder();
+    write(node, out);
+    return out.toString();
   }
 
-  private static void write(JsonNode node, StringBuilder sb) {
+  private static void write(JsonNode node, StringBuilder out) {
     if (node == null || node.isNull() || node.isMissingNode()) {
-      sb.append("null");
+      out.append("null");
       return;
     }
     switch (node.getNodeType()) {
-      case OBJECT -> writeObject((ObjectNode) node, sb);
+      case OBJECT -> writeObject((ObjectNode) node, out);
       case ARRAY -> {
-        sb.append('[');
+        out.append('[');
         for (int i = 0; i < node.size(); i++) {
           if (i > 0) {
-            sb.append(',');
+            out.append(',');
           }
-          write(node.get(i), sb);
+          write(node.get(i), out);
         }
-        sb.append(']');
+        out.append(']');
       }
-      case STRING -> writeString(node.textValue(), sb);
-      case NUMBER -> sb.append(canonicalNumber(node));
-      case BOOLEAN -> sb.append(node.booleanValue() ? "true" : "false");
+      case STRING -> writeString(node.textValue(), out);
+      case NUMBER -> out.append(canonicalNumber(node));
+      case BOOLEAN -> out.append(node.booleanValue() ? "true" : "false");
       default -> throw new IllegalArgumentException("unsupported JSON node type: " + node.getNodeType());
     }
   }
 
-  private static void writeObject(ObjectNode obj, StringBuilder sb) {
+  private static void writeObject(ObjectNode object, StringBuilder out) {
     List<String> names = new ArrayList<>();
-    obj.properties().forEach(e -> names.add(e.getKey()));
+    object.properties().forEach(e -> names.add(e.getKey()));
     names.sort(CanonicalJson::compareByCodePoint);
-    sb.append('{');
+    out.append('{');
     for (int i = 0; i < names.size(); i++) {
       if (i > 0) {
-        sb.append(',');
+        out.append(',');
       }
-      writeString(names.get(i), sb);
-      sb.append(':');
-      write(obj.get(names.get(i)), sb);
+      writeString(names.get(i), out);
+      out.append(':');
+      write(object.get(names.get(i)), out);
     }
-    sb.append('}');
+    out.append('}');
   }
 
-  static String canonicalNumber(JsonNode n) {
-    if (n.isIntegralNumber()) {
-      return n.bigIntegerValue().toString();
+  static String canonicalNumber(JsonNode node) {
+    if (node.isIntegralNumber()) {
+      return node.bigIntegerValue().toString();
     }
-    BigDecimal d = n.decimalValue();
-    if (d.signum() == 0) {
+    BigDecimal decimal = node.decimalValue();
+    if (decimal.signum() == 0) {
       return "0";
     }
-    d = d.stripTrailingZeros();
-    if (d.scale() < 0) {
-      d = d.setScale(0);
+    decimal = decimal.stripTrailingZeros();
+    if (decimal.scale() < 0) {
+      decimal = decimal.setScale(0);
     }
-    return d.toPlainString();
+    return decimal.toPlainString();
   }
 
-  static void writeString(String s, StringBuilder sb) {
-    sb.append('"');
-    for (int i = 0; i < s.length(); i++) {
-      char c = s.charAt(i);
+  static void writeString(String text, StringBuilder out) {
+    out.append('"');
+    for (int i = 0; i < text.length(); i++) {
+      char c = text.charAt(i);
       switch (c) {
-        case '"' -> sb.append("\\\"");
-        case '\\' -> sb.append("\\\\");
-        case '\b' -> sb.append("\\b");
-        case '\f' -> sb.append("\\f");
-        case '\n' -> sb.append("\\n");
-        case '\r' -> sb.append("\\r");
-        case '\t' -> sb.append("\\t");
+        case '"' -> out.append("\\\"");
+        case '\\' -> out.append("\\\\");
+        case '\b' -> out.append("\\b");
+        case '\f' -> out.append("\\f");
+        case '\n' -> out.append("\\n");
+        case '\r' -> out.append("\\r");
+        case '\t' -> out.append("\\t");
         default -> {
           if (c < 0x20) {
-            sb.append(String.format("\\u%04x", (int) c));
+            out.append(String.format("\\u%04x", (int) c));
           } else {
-            sb.append(c);
+            out.append(c);
           }
         }
       }
     }
-    sb.append('"');
+    out.append('"');
   }
 
   static int compareByCodePoint(String a, String b) {

@@ -1,39 +1,46 @@
 package com.sj.audit.hash;
 
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.node.ObjectNode;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Computes the two hashes that make a record tamper-evident:
+ * Computes the two hashes that make an audit record tamper-evident.
  *
  * <ul>
- *   <li><b>content hash</b> — SHA-256 over the canonical JSON "hashable view" of the record: its
- *       core fields plus the map of per-leaf payload commitments;
- *   <li><b>record hash</b> — {@code SHA-256("REC1" | prevRecordHash | contentHash)}, the link that
- *       chains this record to its predecessor.
+ *   <li><b>content hash</b> — {@code SHA-256} over the canonical JSON <i>hashable view</i> of a
+ *       record: its core fields plus the map of per-leaf payload commitments. It fingerprints
+ *       <i>what the record says</i>.
+ *   <li><b>record hash</b> — {@code SHA-256("REC1" | previousRecordHash | contentHash)}. It is the
+ *       link that chains a record to its predecessor; changing any earlier record changes every
+ *       record hash after it.
  * </ul>
+ *
+ * <p>The string literals used to build the pre-image ({@code "v"}, {@code "seq"},
+ * {@code "payloadLeafHashes"}, {@code "REC1"}, …) are a wire format frozen by
+ * {@code CONTENT_HASH_VERSION} — never rename them without bumping the version.
  */
 @Component
 public class AuditHasher {
 
   static final int CONTENT_HASH_VERSION = 1;
-  static final String RECORD_DOMAIN = "REC1";
+  static final String RECORD_HASH_DOMAIN = "REC1";
 
-  private final ObjectMapper mapper;
-  private final SecureRandom random = new SecureRandom();
+  private final ObjectMapper objectMapper;
+  private final SecureRandom secureRandom = new SecureRandom();
 
-  public AuditHasher(ObjectMapper mapper) {
-    this.mapper = mapper;
+  public AuditHasher(ObjectMapper objectMapper) {
+    this.objectMapper = objectMapper;
   }
 
-  public record HashInputs(
+  /** The fields of a record that are fed into its content hash. */
+  public record ContentHashInput(
       long seq,
       UUID eventId,
       String eventType,
@@ -42,54 +49,56 @@ public class AuditHasher {
       String resourceId,
       Instant eventTimestamp,
       Instant recordedAt,
-      Map<String, String> leafCommitments) {}
+      Map<String, String> leafCommitmentsByPointer) {}
 
-  public String contentHash(HashInputs in) {
-    ObjectNode view = mapper.createObjectNode();
-    view.put("v", CONTENT_HASH_VERSION);
-    view.put("seq", in.seq());
-    view.put("eventId", in.eventId().toString());
-    view.put("eventType", in.eventType());
-    view.put("actorId", in.actorId());
-    view.put("resourceType", in.resourceType());
-    view.put("resourceId", in.resourceId());
-    view.put("eventTimestamp", Instants.canonical(in.eventTimestamp()));
-    view.put("recordedAt", Instants.canonical(in.recordedAt()));
-    ObjectNode commits = view.putObject("payloadLeafHashes");
-    in.leafCommitments().forEach(commits::put);
-    return Hashing.sha256Hex(CanonicalJson.canonicalize(view));
+  public String contentHash(ContentHashInput input) {
+    ObjectNode hashableView = objectMapper.createObjectNode();
+    hashableView.put("v", CONTENT_HASH_VERSION);
+    hashableView.put("seq", input.seq());
+    hashableView.put("eventId", input.eventId().toString());
+    hashableView.put("eventType", input.eventType());
+    hashableView.put("actorId", input.actorId());
+    hashableView.put("resourceType", input.resourceType());
+    hashableView.put("resourceId", input.resourceId());
+    hashableView.put("eventTimestamp", Instants.canonical(input.eventTimestamp()));
+    hashableView.put("recordedAt", Instants.canonical(input.recordedAt()));
+    ObjectNode payloadLeafHashes = hashableView.putObject("payloadLeafHashes");
+    input.leafCommitmentsByPointer().forEach(payloadLeafHashes::put);
+    return Hashing.sha256Hex(CanonicalJson.canonicalize(hashableView));
   }
 
-  public String recordHash(String prevRecordHash, String contentHash) {
-    return Hashing.domainHashHex(RECORD_DOMAIN, prevRecordHash, contentHash);
+  public String recordHash(String previousRecordHash, String contentHash) {
+    return Hashing.domainHashHex(RECORD_HASH_DOMAIN, previousRecordHash, contentHash);
   }
 
-  /** Fresh 128-bit hex salt per payload leaf, keyed by JSON Pointer. */
-  public Map<String, String> freshSalts(JsonNode payload) {
-    Map<String, String> salts = new LinkedHashMap<>();
-    for (String pointer : PayloadCommitments.leafForms(payload).keySet()) {
-      byte[] b = new byte[16];
-      random.nextBytes(b);
-      salts.put(pointer, Hex.encode(b));
+  /** A fresh random 128-bit hex salt for every payload leaf, keyed by its JSON Pointer. */
+  public Map<String, String> newSaltPerLeaf(JsonNode payload) {
+    Map<String, String> saltByPointer = new LinkedHashMap<>();
+    for (String pointer : PayloadCommitments.canonicalLeavesByPointer(payload).keySet()) {
+      byte[] saltBytes = new byte[16];
+      secureRandom.nextBytes(saltBytes);
+      saltByPointer.put(pointer, Hex.encode(saltBytes));
     }
-    return salts;
+    return saltByPointer;
   }
 
   /**
-   * Recompute every leaf commitment from a payload and its salt map. Throws if a leaf has no salt
-   * (which would indicate corruption of the stored salt map).
+   * Compute the commitment for every payload leaf from the payload and its salt map. Throws if a
+   * leaf has no salt — that would mean the stored salt map has been corrupted.
    */
-  public Map<String, String> commitmentsFor(JsonNode payload, Map<String, String> saltsByPointer) {
-    Map<String, String> out = new LinkedHashMap<>();
-    PayloadCommitments.leafForms(payload)
+  public Map<String, String> computeLeafCommitments(
+      JsonNode payload, Map<String, String> saltByPointer) {
+    Map<String, String> commitmentByPointer = new LinkedHashMap<>();
+    PayloadCommitments.canonicalLeavesByPointer(payload)
         .forEach(
-            (pointer, form) -> {
-              String salt = saltsByPointer.get(pointer);
+            (pointer, canonicalLeaf) -> {
+              String salt = saltByPointer.get(pointer);
               if (salt == null) {
                 throw new IllegalArgumentException("no salt for payload leaf " + pointer);
               }
-              out.put(pointer, PayloadCommitments.commit(salt, form));
+              commitmentByPointer.put(
+                  pointer, PayloadCommitments.computeLeafCommitment(salt, canonicalLeaf));
             });
-    return out;
+    return commitmentByPointer;
   }
 }

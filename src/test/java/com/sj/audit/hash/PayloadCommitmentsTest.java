@@ -12,12 +12,12 @@ class PayloadCommitmentsTest {
 
   @Test
   void enumeratesLeavesWithJsonPointerPaths() {
-    Map<String, String> forms =
-        PayloadCommitments.leafForms(
+    Map<String, String> canonicalLeafByPointer =
+        PayloadCommitments.canonicalLeavesByPointer(
             mapper.readTree(
                 "{\"amount\":10,\"account\":{\"number\":\"123\"},\"tags\":[\"a\",\"b\"],\"empty\":{}}"));
 
-    assertThat(forms)
+    assertThat(canonicalLeafByPointer)
         .containsEntry("/amount", "N10")
         .containsEntry("/account/number", "S123")
         .containsEntry("/tags/0", "Sa")
@@ -27,19 +27,19 @@ class PayloadCommitmentsTest {
 
   @Test
   void commitmentChangesWithSaltAndValue() {
-    String form = "S123456789";
-    String c1 = PayloadCommitments.commit("aa", form);
-    String c2 = PayloadCommitments.commit("bb", form);
-    String c3 = PayloadCommitments.commit("aa", "S987654321");
+    String canonicalLeaf = "S123456789";
+    String commitment = PayloadCommitments.computeLeafCommitment("aa", canonicalLeaf);
+    String differentSalt = PayloadCommitments.computeLeafCommitment("bb", canonicalLeaf);
+    String differentValue = PayloadCommitments.computeLeafCommitment("aa", "S987654321");
 
-    assertThat(c1).hasSize(64).isNotEqualTo(c2).isNotEqualTo(c3);
-    assertThat(PayloadCommitments.commit("aa", form)).isEqualTo(c1);
+    assertThat(commitment).hasSize(64).isNotEqualTo(differentSalt).isNotEqualTo(differentValue);
+    assertThat(PayloadCommitments.computeLeafCommitment("aa", canonicalLeaf)).isEqualTo(commitment);
   }
 
   @Test
   void escapesSlashAndTildeInKeys() {
-    Map<String, String> forms =
-        PayloadCommitments.leafForms(mapper.readTree("{\"a/b\":1,\"c~d\":2}"));
-    assertThat(forms).containsKeys("/a~1b", "/c~0d");
+    Map<String, String> canonicalLeafByPointer =
+        PayloadCommitments.canonicalLeavesByPointer(mapper.readTree("{\"a/b\":1,\"c~d\":2}"));
+    assertThat(canonicalLeafByPointer).containsKeys("/a~1b", "/c~0d");
   }
 }

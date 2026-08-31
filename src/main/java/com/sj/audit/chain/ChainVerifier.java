@@ -38,243 +38,268 @@ import tools.jackson.databind.JsonNode;
 @Service
 public class ChainVerifier {
 
-  private static final int PAGE = 500;
+  private static final int SCAN_PAGE_SIZE = 500;
 
-  private final AuditEventRepository events;
-  private final ArchivedAuditEventRepository archived;
+  private final AuditEventRepository auditEvents;
+  private final ArchivedAuditEventRepository archive;
   private final RedactionRepository redactions;
-  private final AuditHasher hasher;
-  private final JsonSupport json;
+  private final AuditHasher auditHasher;
+  private final JsonSupport jsonCodec;
   private final String genesisHash;
 
   public ChainVerifier(
-      AuditEventRepository events,
-      ArchivedAuditEventRepository archived,
+      AuditEventRepository auditEvents,
+      ArchivedAuditEventRepository archive,
       RedactionRepository redactions,
-      AuditHasher hasher,
-      JsonSupport json,
+      AuditHasher auditHasher,
+      JsonSupport jsonCodec,
       AuditProperties properties) {
-    this.events = events;
-    this.archived = archived;
+    this.auditEvents = auditEvents;
+    this.archive = archive;
     this.redactions = redactions;
-    this.hasher = hasher;
-    this.json = json;
+    this.auditHasher = auditHasher;
+    this.jsonCodec = jsonCodec;
     this.genesisHash = properties.genesisHash();
   }
 
   @Transactional(readOnly = true)
-  public VerificationReport verify(Long fromSeqOrNull, Long toSeqOrNull, boolean deep) {
-    long minSeq = events.minSeq();
-    long maxSeq = events.maxSeq();
-    if (maxSeq == 0) {
+  public VerificationReport verify(Long requestedFromSeq, Long requestedToSeq, boolean deep) {
+    long firstSeqInChain = auditEvents.minSeq();
+    long lastSeqInChain = auditEvents.maxSeq();
+    if (lastSeqInChain == 0) {
       return VerificationReport.intact(0, 0, 0, deep, List.of());
     }
-    long fromSeq = fromSeqOrNull != null ? Math.max(fromSeqOrNull, 1) : minSeq;
-    long toSeq = toSeqOrNull != null ? Math.min(toSeqOrNull, maxSeq) : maxSeq;
+    long fromSeq = requestedFromSeq != null ? Math.max(requestedFromSeq, 1) : firstSeqInChain;
+    long toSeq = requestedToSeq != null ? Math.min(requestedToSeq, lastSeqInChain) : lastSeqInChain;
     if (fromSeq > toSeq) {
       return VerificationReport.intact(0, fromSeq, 0, deep, List.of());
     }
 
-    String prevRecordHash = seedPrevHash(fromSeq);
+    String previousRecordHash = recordHashBefore(fromSeq);
     long expectedSeq = fromSeq;
-    long checked = 0;
+    long recordsChecked = 0;
     List<VerificationReport.ArchivedSegment> archivedSegments = new ArrayList<>();
-    Long archiveRunStart = null;
-    Long archiveRunEnd = null;
+    Long openArchivedRunStartSeq = null;
+    Long openArchivedRunEndSeq = null;
 
-    long cursor = fromSeq;
-    while (cursor <= toSeq) {
+    long nextSeqToScan = fromSeq;
+    while (nextSeqToScan <= toSeq) {
       List<AuditEvent> page =
-          events.findBySeqGreaterThanEqualOrderBySeqAsc(cursor, Limit.of(PAGE));
+          auditEvents.findBySeqGreaterThanEqualOrderBySeqAsc(nextSeqToScan, Limit.of(SCAN_PAGE_SIZE));
       if (page.isEmpty()) {
         break;
       }
-      for (AuditEvent e : page) {
-        if (e.getSeq() > toSeq) {
+      for (AuditEvent event : page) {
+        if (event.getSeq() > toSeq) {
           break;
         }
-        checked++;
+        recordsChecked++;
 
-        if (e.getSeq() != expectedSeq) {
-          flushRun(archivedSegments, archiveRunStart, archiveRunEnd);
+        if (event.getSeq() != expectedSeq) {
+          closeArchivedRun(archivedSegments, openArchivedRunStartSeq, openArchivedRunEndSeq);
           return VerificationReport.broken(
-              checked,
+              recordsChecked,
               fromSeq,
-              e.getSeq(),
+              event.getSeq(),
               deep,
               archivedSegments,
               new VerificationReport.Inconsistency(
                   expectedSeq,
                   null,
                   ViolationType.SEQUENCE_GAP,
-                  "expected seq " + expectedSeq + " but next present record is " + e.getSeq()));
+                  "expected seq " + expectedSeq + " but next present record is " + event.getSeq()));
         }
 
         // 1. genesis / linkage
-        if (e.getSeq() == 1 && !e.getPrevHash().equals(genesisHash)) {
+        if (event.getSeq() == 1 && !event.getPrevHash().equals(genesisHash)) {
           return VerificationReport.broken(
-              checked, fromSeq, e.getSeq(), deep, archivedSegments,
-              inc(e, ViolationType.GENESIS_MISMATCH, "prev_hash != configured genesis value"));
+              recordsChecked, fromSeq, event.getSeq(), deep, archivedSegments,
+              inconsistencyAt(
+                  event, ViolationType.GENESIS_MISMATCH, "prev_hash != configured genesis value"));
         }
-        if (!e.getPrevHash().equals(prevRecordHash)) {
+        if (!event.getPrevHash().equals(previousRecordHash)) {
           return VerificationReport.broken(
-              checked, fromSeq, e.getSeq(), deep, archivedSegments,
-              inc(
-                  e,
+              recordsChecked, fromSeq, event.getSeq(), deep, archivedSegments,
+              inconsistencyAt(
+                  event,
                   ViolationType.PREV_HASH_MISMATCH,
                   "prev_hash does not match the previous record's record_hash"));
         }
 
         // 2. content hash (and, where possible, per-leaf commitments)
-        VerificationReport.Inconsistency contentProblem = checkContent(e, deep);
-        if (contentProblem != null) {
+        VerificationReport.Inconsistency contentInconsistency = checkContentHash(event, deep);
+        if (contentInconsistency != null) {
           return VerificationReport.broken(
-              checked, fromSeq, e.getSeq(), deep, archivedSegments, contentProblem);
+              recordsChecked, fromSeq, event.getSeq(), deep, archivedSegments, contentInconsistency);
         }
 
         // 3. record hash
-        String expectedRecordHash = hasher.recordHash(e.getPrevHash(), e.getContentHash());
-        if (!expectedRecordHash.equals(e.getRecordHash())) {
+        String expectedRecordHash =
+            auditHasher.recordHash(event.getPrevHash(), event.getContentHash());
+        if (!expectedRecordHash.equals(event.getRecordHash())) {
           return VerificationReport.broken(
-              checked, fromSeq, e.getSeq(), deep, archivedSegments,
-              inc(e, ViolationType.RECORD_HASH_MISMATCH, "recomputed record_hash != stored"));
+              recordsChecked, fromSeq, event.getSeq(), deep, archivedSegments,
+              inconsistencyAt(
+                  event, ViolationType.RECORD_HASH_MISMATCH, "recomputed record_hash != stored"));
         }
 
-        // archived-run bookkeeping
-        if (e.isArchived()) {
-          if (archiveRunStart == null) {
-            archiveRunStart = e.getSeq();
+        // track contiguous runs of archived tombstones so the report can list them
+        if (event.isArchived()) {
+          if (openArchivedRunStartSeq == null) {
+            openArchivedRunStartSeq = event.getSeq();
           }
-          archiveRunEnd = e.getSeq();
-        } else if (archiveRunStart != null) {
+          openArchivedRunEndSeq = event.getSeq();
+        } else if (openArchivedRunStartSeq != null) {
           archivedSegments.add(
-              new VerificationReport.ArchivedSegment(archiveRunStart, archiveRunEnd));
-          archiveRunStart = null;
-          archiveRunEnd = null;
+              new VerificationReport.ArchivedSegment(
+                  openArchivedRunStartSeq, openArchivedRunEndSeq));
+          openArchivedRunStartSeq = null;
+          openArchivedRunEndSeq = null;
         }
 
-        prevRecordHash = e.getRecordHash();
+        previousRecordHash = event.getRecordHash();
         expectedSeq++;
       }
-      cursor = page.get(page.size() - 1).getSeq() + 1;
+      nextSeqToScan = page.get(page.size() - 1).getSeq() + 1;
     }
 
     if (expectedSeq <= toSeq) {
-      flushRun(archivedSegments, archiveRunStart, archiveRunEnd);
+      closeArchivedRun(archivedSegments, openArchivedRunStartSeq, openArchivedRunEndSeq);
       return VerificationReport.broken(
-          checked, fromSeq, expectedSeq - 1, deep, archivedSegments,
+          recordsChecked, fromSeq, expectedSeq - 1, deep, archivedSegments,
           new VerificationReport.Inconsistency(
               expectedSeq, null, ViolationType.SEQUENCE_GAP,
               "records end at seq " + (expectedSeq - 1) + " but chain head is " + toSeq));
     }
 
-    flushRun(archivedSegments, archiveRunStart, archiveRunEnd);
-    return VerificationReport.intact(checked, fromSeq, toSeq, deep, archivedSegments);
+    closeArchivedRun(archivedSegments, openArchivedRunStartSeq, openArchivedRunEndSeq);
+    return VerificationReport.intact(recordsChecked, fromSeq, toSeq, deep, archivedSegments);
   }
 
-  private VerificationReport.Inconsistency checkContent(AuditEvent e, boolean deep) {
-    Map<String, String> storedCommitments = json.readStringMap(e.getLeafCommitmentsJson());
-    Set<String> redactedPaths =
-        redactions.findByEventSeqOrderByFieldPathAsc(e.getSeq()).stream()
+  private VerificationReport.Inconsistency checkContentHash(AuditEvent event, boolean deep) {
+    Map<String, String> storedCommitmentByPointer =
+        jsonCodec.readStringMap(event.getLeafCommitmentsJson());
+    Set<String> redactedPointers =
+        redactions.findByEventSeqOrderByFieldPathAsc(event.getSeq()).stream()
             .map(Redaction::getFieldPath)
             .collect(Collectors.toSet());
 
-    if (e.isArchived()) {
+    if (event.isArchived()) {
       if (deep) {
-        ArchivedAuditEvent copy = archived.findBySeq(e.getSeq()).orElse(null);
-        if (copy == null) {
-          return inc(e, ViolationType.CONTENT_HASH_MISMATCH, "archived row has no archive copy");
+        ArchivedAuditEvent archivedCopy = archive.findBySeq(event.getSeq()).orElse(null);
+        if (archivedCopy == null) {
+          return inconsistencyAt(
+              event, ViolationType.CONTENT_HASH_MISMATCH, "archived row has no archive copy");
         }
-        VerificationReport.Inconsistency leafProblem =
-            recomputeLeaves(
-                e, copy.getPayloadJson(), copy.getLeafSaltsJson(), storedCommitments, redactedPaths);
-        if (leafProblem != null) {
-          return leafProblem;
+        VerificationReport.Inconsistency leafInconsistency =
+            checkLeafCommitments(
+                event,
+                archivedCopy.getPayloadJson(),
+                archivedCopy.getLeafSaltsJson(),
+                storedCommitmentByPointer,
+                redactedPointers);
+        if (leafInconsistency != null) {
+          return leafInconsistency;
         }
       }
-      // shallow: trust storedCommitments (still chained into record_hash) and just recompute
+      // shallow: trust the stored commitments (still chained into record_hash) and just recompute
       // the content hash from the stored core fields + commitment map.
-      return contentHashMatches(e, storedCommitments)
+      return contentHashMatches(event, storedCommitmentByPointer)
           ? null
-          : inc(e, ViolationType.CONTENT_HASH_MISMATCH, "recomputed content_hash != stored (archived)");
+          : inconsistencyAt(
+              event,
+              ViolationType.CONTENT_HASH_MISMATCH,
+              "recomputed content_hash != stored (archived)");
     }
 
-    VerificationReport.Inconsistency leafProblem =
-        recomputeLeaves(
-            e, e.getPayloadJson(), e.getLeafSaltsJson(), storedCommitments, redactedPaths);
-    if (leafProblem != null) {
-      return leafProblem;
+    VerificationReport.Inconsistency leafInconsistency =
+        checkLeafCommitments(
+            event,
+            event.getPayloadJson(),
+            event.getLeafSaltsJson(),
+            storedCommitmentByPointer,
+            redactedPointers);
+    if (leafInconsistency != null) {
+      return leafInconsistency;
     }
-    return contentHashMatches(e, storedCommitments)
+    return contentHashMatches(event, storedCommitmentByPointer)
         ? null
-        : inc(e, ViolationType.CONTENT_HASH_MISMATCH, "recomputed content_hash != stored");
+        : inconsistencyAt(
+            event, ViolationType.CONTENT_HASH_MISMATCH, "recomputed content_hash != stored");
   }
 
-  /** Recompute every non-redacted leaf commitment from plaintext + salt and compare to stored. */
-  private VerificationReport.Inconsistency recomputeLeaves(
-      AuditEvent e,
+  /**
+   * For every non-redacted leaf, recompute its commitment from the current plaintext + salt and
+   * compare it to the stored commitment. Also catches leaves that were added or removed.
+   */
+  private VerificationReport.Inconsistency checkLeafCommitments(
+      AuditEvent event,
       String payloadJson,
       String saltsJson,
-      Map<String, String> storedCommitments,
-      Set<String> redactedPaths) {
-    JsonNode payload = json.parse(payloadJson);
-    Map<String, String> salts = json.readStringMap(saltsJson);
-    Map<String, String> currentForms = PayloadCommitments.leafForms(payload);
+      Map<String, String> storedCommitmentByPointer,
+      Set<String> redactedPointers) {
+    JsonNode payload = jsonCodec.parse(payloadJson);
+    Map<String, String> saltByPointer = jsonCodec.readStringMap(saltsJson);
+    Map<String, String> currentLeafByPointer = PayloadCommitments.canonicalLeavesByPointer(payload);
 
-    for (Map.Entry<String, String> entry : storedCommitments.entrySet()) {
-      String path = entry.getKey();
-      if (redactedPaths.contains(path)) {
+    for (Map.Entry<String, String> stored : storedCommitmentByPointer.entrySet()) {
+      String pointer = stored.getKey();
+      if (redactedPointers.contains(pointer)) {
         continue;
       }
-      String form = currentForms.get(path);
-      if (form == null) {
-        return inc(
-            e,
+      String currentLeaf = currentLeafByPointer.get(pointer);
+      if (currentLeaf == null) {
+        return inconsistencyAt(
+            event,
             ViolationType.LEAF_COMMITMENT_MISMATCH,
-            "payload leaf " + path + " is missing (structure changed)");
+            "payload leaf " + pointer + " is missing (structure changed)");
       }
-      String salt = salts.get(path);
+      String salt = saltByPointer.get(pointer);
       if (salt == null) {
-        return inc(e, ViolationType.MISSING_SALT, "no salt for payload leaf " + path);
+        return inconsistencyAt(
+            event, ViolationType.MISSING_SALT, "no salt for payload leaf " + pointer);
       }
-      if (!PayloadCommitments.commit(salt, form).equals(entry.getValue())) {
-        return inc(
-            e, ViolationType.LEAF_COMMITMENT_MISMATCH, "payload leaf " + path + " was modified");
+      if (!PayloadCommitments.computeLeafCommitment(salt, currentLeaf).equals(stored.getValue())) {
+        return inconsistencyAt(
+            event,
+            ViolationType.LEAF_COMMITMENT_MISMATCH,
+            "payload leaf " + pointer + " was modified");
       }
     }
-    // any leaf present now but not in the stored commitment set => field was added
-    for (String path : currentForms.keySet()) {
-      if (!storedCommitments.containsKey(path)) {
-        return inc(
-            e,
+    // any leaf present now but not in the stored commitment set => a field was added
+    for (String pointer : currentLeafByPointer.keySet()) {
+      if (!storedCommitmentByPointer.containsKey(pointer)) {
+        return inconsistencyAt(
+            event,
             ViolationType.LEAF_COMMITMENT_MISMATCH,
-            "payload leaf " + path + " was added after the record was written");
+            "payload leaf " + pointer + " was added after the record was written");
       }
     }
     return null;
   }
 
-  private boolean contentHashMatches(AuditEvent e, Map<String, String> commitments) {
-    String recomputed =
-        hasher.contentHash(
-            new AuditHasher.HashInputs(
-                e.getSeq(),
-                e.getEventId(),
-                e.getEventType(),
-                e.getActorId(),
-                e.getResourceType(),
-                e.getResourceId(),
-                e.getEventTimestamp(),
-                e.getRecordedAt(),
-                commitments));
-    return recomputed.equals(e.getContentHash());
+  private boolean contentHashMatches(AuditEvent event, Map<String, String> commitmentByPointer) {
+    String recomputedContentHash =
+        auditHasher.contentHash(
+            new AuditHasher.ContentHashInput(
+                event.getSeq(),
+                event.getEventId(),
+                event.getEventType(),
+                event.getActorId(),
+                event.getResourceType(),
+                event.getResourceId(),
+                event.getEventTimestamp(),
+                event.getRecordedAt(),
+                commitmentByPointer));
+    return recomputedContentHash.equals(event.getContentHash());
   }
 
-  private String seedPrevHash(long fromSeq) {
+  /** The record hash the verifier must see on the record just before {@code fromSeq}. */
+  private String recordHashBefore(long fromSeq) {
     if (fromSeq <= 1) {
       return genesisHash;
     }
-    return events
+    return auditEvents
         .findById(fromSeq - 1)
         .map(AuditEvent::getRecordHash)
         .orElseThrow(
@@ -283,15 +308,15 @@ public class ChainVerifier {
                     "cannot start verification at seq " + fromSeq + ": predecessor is missing"));
   }
 
-  private static void flushRun(
-      List<VerificationReport.ArchivedSegment> segments, Long start, Long end) {
-    if (start != null) {
-      segments.add(new VerificationReport.ArchivedSegment(start, end));
+  private static void closeArchivedRun(
+      List<VerificationReport.ArchivedSegment> segments, Long runStartSeq, Long runEndSeq) {
+    if (runStartSeq != null) {
+      segments.add(new VerificationReport.ArchivedSegment(runStartSeq, runEndSeq));
     }
   }
 
-  private static VerificationReport.Inconsistency inc(
-      AuditEvent e, ViolationType type, String detail) {
-    return new VerificationReport.Inconsistency(e.getSeq(), e.getEventId(), type, detail);
+  private static VerificationReport.Inconsistency inconsistencyAt(
+      AuditEvent event, ViolationType type, String detail) {
+    return new VerificationReport.Inconsistency(event.getSeq(), event.getEventId(), type, detail);
   }
 }

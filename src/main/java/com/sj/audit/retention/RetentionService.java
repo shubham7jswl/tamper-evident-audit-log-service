@@ -26,17 +26,17 @@ public class RetentionService {
 
   private static final Logger log = LoggerFactory.getLogger(RetentionService.class);
 
-  private final AuditEventRepository events;
+  private final AuditEventRepository auditEvents;
   private final ArchivedAuditEventRepository archive;
   private final AuditProperties properties;
   private final Clock clock;
 
   public RetentionService(
-      AuditEventRepository events,
+      AuditEventRepository auditEvents,
       ArchivedAuditEventRepository archive,
       AuditProperties properties,
       Clock clock) {
-    this.events = events;
+    this.auditEvents = auditEvents;
     this.archive = archive;
     this.properties = properties;
     this.clock = clock;
@@ -51,17 +51,17 @@ public class RetentionService {
     }
     Instant now = clock.instant();
     Instant cutoff = now.minus(properties.retention().window());
-    List<AuditEvent> due =
-        events.findByArchivedAtIsNullAndRecordedAtLessThanOrderBySeqAsc(cutoff);
+    List<AuditEvent> recordsToArchive =
+        auditEvents.findByArchivedAtIsNullAndRecordedAtLessThanOrderBySeqAsc(cutoff);
 
     long throughSeq = 0;
-    for (AuditEvent event : due) {
+    for (AuditEvent event : recordsToArchive) {
       archive.save(ArchivedAuditEvent.copyOf(event, now));
       event.archiveAsTombstone(now);
       throughSeq = event.getSeq();
     }
-    log.info("retention run archived {} records (cutoff {})", due.size(), cutoff);
-    return new RetentionResult(due.size(), throughSeq, cutoff);
+    log.info("retention run archived {} records (cutoff {})", recordsToArchive.size(), cutoff);
+    return new RetentionResult(recordsToArchive.size(), throughSeq, cutoff);
   }
 
   /** Registered unconditionally; only acts when {@code audit.retention.scheduled=true}. */
