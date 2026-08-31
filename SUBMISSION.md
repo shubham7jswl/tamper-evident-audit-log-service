@@ -6,8 +6,8 @@ This file identifies the exact revision the [attestation](ATTESTATION.md) covers
 |---|---|
 | Repository | https://github.com/shubham7jswl/tamper-evident-audit-log-service |
 | Branch | `feature/taper-evident-log-service` |
-| Reviewed revision | the commit pointed to by the annotated git tag **`submission`** |
-| Verify | `git fetch --tags && git rev-parse submission` — this SHA is the tree under review |
+| Reviewed revision | the commit tagged **`submission`** (an annotated tag on the branch tip) |
+| Verify | `git fetch --tags && git rev-parse submission^{commit}` prints the reviewed commit SHA |
 
 The commit history on the branch is the authentic development record (unsquashed). Notable
 milestones:
