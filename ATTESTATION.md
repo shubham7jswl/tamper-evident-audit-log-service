@@ -7,7 +7,7 @@
 
 ## Authorship and ownership
 
-I, **<your name>**, am the author of this submission and I own its correctness, design,
+I, Shubham Jaiswal, am the author of this submission and I own its correctness, design,
 maintainability, and production-readiness judgments. AI assistance (Claude Code) was used as an
 accelerator within tasks I defined and reviewed; it did not autonomously drive the work.
 
@@ -39,4 +39,4 @@ verification.
 
 ---
 
-Signed: ______________________  Date: ______________
+Signed:  Shubham Jaiswal Date: 08/30/2026
