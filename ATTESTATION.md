@@ -2,14 +2,14 @@
 
 ## Submission identity and reviewed revision
 
-| Field | Value |
-|---|---|
-| Candidate | Shubham Jaiswal |
-| Contact | sam7jais@gmail.com |
-| Repository | https://github.com/shubham7jswl/tamper-evident-audit-log-service |
-| Branch under review | `feature/taper-evident-log-service` (spelling of "taper" is a typo in the branch name only) |
+| Field | Value                                                                                                                                                               |
+|---|---------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Candidate | Shubham Jaiswal                                                                                                                                                     |
+| Contact | shubham7jaiswal@gmail.com                                                                                                                                           |
+| Repository | https://github.com/shubham7jswl/tamper-evident-audit-log-service                                                                                                    |
+| Branch under review | `feature/taper-evident-log-service` (spelling of "taper" is a typo in the branch name only)                                                                         |
 | Reviewed revision | The commit pointed to by the annotated git tag **`submission`**. Confirm with `git fetch --tags && git rev-parse submission`. See `SUBMISSION.md` at the repo root. |
-| Commit history | Authentic and unsquashed. Work proceeded in reviewable increments — `git log --oneline` is the development record. |
+| Commit history | Authentic and unsquashed. Work proceeded in reviewable increments — `git log --oneline` is the development record.                                                  |
 
 > If you received this as an archive without a `.git` directory, request the repository (or an
 > archive that includes `.git`) so the revision and history above can be verified. The commit SHA
