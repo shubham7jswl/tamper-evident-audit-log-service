@@ -12,7 +12,8 @@ redaction that does not break the chain, verifiable bulk export, and a complianc
 - **Testing approach, limits, trade-offs**: `docs/testing.md`
 - **AI usage log**: `docs/ai-usage-log.md`
 - **Final engineering summary**: `docs/final-engineering-summary.md`
-- **Attestation**: `ATTESTATION.md`
+- **Post-review remediation**: `docs/eval-remediation.md`
+- **Attestation & reviewed revision**: `ATTESTATION.md`, `SUBMISSION.md`
 
 ## Prerequisites
 
@@ -39,13 +40,18 @@ endpoints require `X-Api-Key`.
 
 ### API keys
 
-Three static keys are configured by default (override via env vars in real environments):
+The **`dev` profile** ships three well-known keys for local use:
 
 | Key (header `X-Api-Key`) | Scopes | Env var |
 |---|---|---|
 | `dev-reader-key` | READ | `AUDIT_READER_KEY` |
 | `dev-writer-key` | WRITE, READ | `AUDIT_WRITER_KEY` |
 | `dev-admin-key`  | WRITE, READ, ADMIN | `AUDIT_ADMIN_KEY` |
+
+Outside `dev` (and `test`), **no keys are shipped**: set `AUDIT_READER_KEY` / `AUDIT_WRITER_KEY` /
+`AUDIT_ADMIN_KEY` to high-entropy secrets. `ApiKeyConfigValidator` fails startup if a key is
+missing, a known placeholder, or shorter than 16 characters — so a deployment that forgot to set
+them cannot silently come up with default credentials.
 
 ## Build & test
 

@@ -26,6 +26,10 @@ audit:
     - key: test-admin-key
       principal: test-admin
       scopes: [WRITE, READ, ADMIN]
+    # WRITE without READ — exists only so SecurityMatrixIT can assert READ-scope denial.
+    - key: test-writeonly-key
+      principal: test-writeonly
+      scopes: [WRITE]
   retention:
     enabled: true
     window: P365D

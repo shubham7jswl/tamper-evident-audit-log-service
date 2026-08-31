@@ -15,14 +15,17 @@
 | Unit | `CanonicalJsonTest` (6) | deterministic serialization: key sorting, whitespace, number normalization, escaping, unicode, input-order independence |
 | Unit | `PayloadCommitmentsTest` (3) | leaf enumeration + JSON Pointer paths + escaping; commitment varies with salt and value; is stable |
 | IT | `ChainVerifierIT` (6) | intact chain verifies; **direct-DB tamper** of a core field / payload leaf / record hash is detected at the right `seq` with the right `ViolationType`; a deleted row is a `SEQUENCE_GAP` |
+| IT | `ChainAppenderConcurrencyIT` (1) | 8×8 concurrent `append()` → gap-free `seq` 1..64, head advanced, chain verifies `intact` — exercises the `chain_head` `FOR UPDATE` lock (ADR-0003) |
 | IT | `RedactionServiceIT` (4) | redacted chain still verifies; value is gone; sibling fields still integrity-checked; meta-audit event written; bad path rejected |
 | IT | `RetentionServiceIT` (2) | archived tombstones don't cause a false break; `archivedSegments` reported; deep verify catches tamper inside the archive |
 | IT | `BundleExportIT` (3) | exported bundle verifies offline (incl. non-contiguous seqs); tampering a record or the bundle hash fails verification |
-| IT | `AuditApiIT` (8) | 401 without key, 403 wrong scope, create + query + filter + pagination, `verify` endpoint, **no `PUT` route (405)**, non-object payload rejected |
+| IT | `AuditApiIT` (8) | happy paths: create + query + filter + pagination, `verify` endpoint, **no `PUT` route (405)**, non-object payload rejected, 401 without a key |
+| IT | `SecurityMatrixIT` (23) | bad/blank/unknown/wrong key → 401; every protected endpoint × an under-scoped key → 403 (incl. READ-denial via a WRITE-only key and ADMIN-denial on redaction/retention); `deep=true` verify needs ADMIN; ADMIN is never blocked by auth on any endpoint |
 | IT | `ComplianceReportIT` (2) | access report returns only configured access events for the account; embeds a verifiable bundle; is itself audited; rejects non-client-data resource types |
+| Unit | `ApiKeyConfigValidatorTest` (7) + `ApiKeyConfigValidatorContextTest` (3) | startup fails on missing / placeholder / short keys outside `dev`/`test`; strong keys and relaxed profiles pass |
 | Smoke | `TamperEvidentAuditLogServiceApplicationTests` | full Spring context + Flyway schema loads |
 
-~35 tests. Manual acceptance (`scripts/tamper-demo.md`) was run against a live instance during
+~70 tests (20 unit + 50 integration). Manual acceptance (`scripts/tamper-demo.md`) was run against a live instance during
 development: write → `verify intact` → H2-shell `UPDATE` → `verify` reports
 `CONTENT_HASH_MISMATCH` at the tampered `seq`.
 
@@ -32,18 +35,22 @@ development: write → `verify intact` → H2-shell `UPDATE` → `verify` report
   datastore directly (not via the API) and asserts detection + localization.
 - The **redaction invariant**: "redaction must not break the chain" is asserted, not just claimed.
 - The **export invariant**: verification works from the bundle alone, with a Spring-free verifier.
-- API **authz** and the **absence** of mutation routes.
+- API **authn/authz**: the full endpoint × scope matrix, bad-credential rejection, the deep-verify
+  ADMIN gate, and the **absence** of mutation routes.
+- **Fail-closed configuration**: the app refuses to start with default/placeholder API keys
+  outside `dev`/`test`.
 
 ## What is not covered, and why
 
 | Gap | Why not | Risk |
 |---|---|---|
-| Concurrency / load test of `ChainAppender` | Correctness rests on a DB row lock (well-understood); a meaningful load test needs Postgres + a harness | Low — single-writer semantics are simple; throughput is a known limitation, not a correctness risk |
-| Multi-instance verification | Requires orchestrating two app processes on one DB | Low — the lock is DB-side |
+| **Load** test of `ChainAppender` (sustained throughput) | Correctness under contention is now covered by `ChainAppenderConcurrencyIT`; a throughput benchmark needs Postgres + a harness | Low — throughput is a known limitation, not a correctness risk |
+| Multi-instance verification (two JVMs, one DB) | Requires orchestrating two app processes on one DB | Low — the lock is DB-side; single-JVM contention is tested |
 | Property-based / fuzz testing of `CanonicalJson` | Time; the RFC-8785 divergence is already documented | Medium — exotic float payloads could serialize inconsistently across languages |
 | Postgres parity | H2 chosen for zero-install; SQL is standard, `columnDefinition` avoided | Medium — `TIMESTAMP(9)` / `FOR UPDATE` behaviour differs subtly |
 | Performance of O(n) verification on large chains | No large dataset generated | Medium — verification cost grows linearly; checkpointing is the mitigation, noted as future work |
-| Key rotation, rate limiting, mTLS | Auth is intentionally minimal | Medium — not production-grade auth |
+| Key rotation, expiry, revocation, rate limiting, replay/idempotency, mTLS | Auth is intentionally minimal (static keys); see `architecture.md` §6 | Medium — not production-grade auth. Scope enforcement and fail-closed config *are* tested |
+| Cross-tenant / resource-ownership (BOLA) denial | By design any `READ` key may read any actor/resource — this is an operator-facing audit tool with a single trust domain | Medium — a multi-tenant deployment would need per-resource authorization |
 | Archive in real WORM storage | H2 table stands in for it | Medium — archive integrity depends on that store; deep verify is the check |
 | `BundleVerifier` cross-language | Only the Java verifier exists | Low–Medium — algorithm is documented in `scenario-b.md` |
 

@@ -156,6 +156,12 @@ enforced by an interceptor. High-impact operations (redaction, retention, deep v
 `ADMIN` — this is the "human sign-off for high-impact changes" control. Deliberately minimal: no
 rotation, no rate limiting, no mTLS — see §6.
 
+Keys are supplied per-environment via `AUDIT_READER_KEY` / `AUDIT_WRITER_KEY` / `AUDIT_ADMIN_KEY`;
+the `dev` profile provides well-known local keys. `ApiKeyConfigValidator` runs at startup and
+**fails the application** if, outside the `dev`/`test` profiles, any key is missing, a known
+placeholder, or under 16 characters — a deployment cannot come up with default credentials by
+omission.
+
 ## 5. Key trade-offs
 
 | Decision | Benefit | Cost / limitation |
