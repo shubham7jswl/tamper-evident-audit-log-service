@@ -36,6 +36,9 @@ scope interceptor, `@RequireScope`).
   `StringNode` not `TextNode`; annotations stay `com.fasterxml.jackson.annotation`.
 - **Flyway** auto-config comes from `spring-boot-flyway` (Boot 4 split it out). Schema is
   authoritative; `ddl-auto=none`.
+- **H2 web console** auto-config comes from `spring-boot-h2console` (Boot 4 split it out too).
+  Without that dep `spring.h2.console.*` is inert and `/h2-console` 404s. Enabled only in the
+  `dev` profile (`application-dev.yml`).
 - `seq` is app-assigned under the `chain_head` `SELECT FOR UPDATE`, not a DB identity.
 - `content_hash` covers per-leaf **commitments**, never raw payload values — this is what makes
   redaction possible without breaking the chain (ADR-0004).

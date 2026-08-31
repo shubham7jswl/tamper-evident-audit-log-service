@@ -73,6 +73,14 @@
             <artifactId>h2</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <!-- Spring Boot 4 ships the H2 web-console auto-configuration in its own module
+             (like spring-boot-flyway above). Without it the `spring.h2.console.*` properties
+             in application-dev.yml are inert and /h2-console 404s. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-h2console</artifactId>
+            <scope>runtime</scope>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
