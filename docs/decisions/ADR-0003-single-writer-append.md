@@ -23,6 +23,14 @@ across instances sharing the database.
 | Append to an in-memory queue drained by a single background writer | Adds a durability gap (events acknowledged but not yet chained) and a component to operate. |
 | Per-stream chains (shard by `resourceType`/tenant), each independently serialized | This is the intended **scale path**, not needed at current scope. |
 
+## Verification
+
+`ChainAppenderConcurrencyIT` runs 8 threads × 8 concurrent `append()` calls against H2 and asserts
+the result is a gap-free `seq` 1..64, the chain head advanced to 64, and `ChainVerifier` reports
+`intact`. Removing the `FOR UPDATE` lock fails this test (duplicate `seq` → PK violation). This is
+single-JVM contention on a local row lock; multi-instance behaviour against Postgres is still only
+argued, not tested (see `docs/testing.md`).
+
 ## Consequences
 
 - Write throughput is bounded by one writer per chain. For an audit log this is acceptable;
